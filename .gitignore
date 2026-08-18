@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+
+# Personal data belongs in the separately provisioned vault directory, never in this repository.
+raw/
+structured/
+indexes/
+incoming/
+logs/
+tmp/
+assets/

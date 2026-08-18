@@ -1,0 +1,17 @@
+{
+  "name": "personal-vault-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "User-owned Markdown vault engine and MCP server.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "mcp:vault": "node mcp/personal-vault-server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  }
+}

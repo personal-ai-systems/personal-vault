@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "interpretation", "questions", "proposals"],
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "interpretation": {
+      "type": "string"
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question"],
+        "properties": {
+          "id": { "type": "string" },
+          "question": { "type": "string" }
+        }
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "actionId", "preview"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "actionId": {
+            "type": "string",
+            "enum": [
+              "leave-in-inbox",
+              "link-to-project",
+              "add-today-achievement",
+              "add-to-today-plan",
+              "apply-structured-update"
+            ]
+          },
+          "projectId": {
+            "type": ["string", "null"]
+          },
+          "processorId": {
+            "type": ["string", "null"]
+          },
+          "recordType": {
+            "type": ["string", "null"]
+          },
+          "target": {
+            "type": ["string", "null"]
+          },
+          "preview": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
