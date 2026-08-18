@@ -2,18 +2,20 @@
 
 Personal Vault Core is the portable, user-owned data and integration layer for the Personal Vault system.
 
-It owns the generic MCP server and writes only to a separately provisioned private Vault directory. The Vault directory contains the user's Markdown, assets, indexes, health imports, and logs; none of those records belong in this repository.
+The authoritative product boundary and implementation roadmap are in [`AGENTS.md`](AGENTS.md). Read that file before changing the repository.
+
+It owns the generic MCP server and writes only to a separately provisioned private Vault directory. The Vault directory contains the user's records, assets, indexes, imports and logs; none of those records belong in this repository.
 
 ## Boundaries
 
 Core owns:
 
-- raw readable Markdown captures and image assets;
-- append-only indexes and capture proposals;
-- generic MCP capture, search, review, and plan tools;
+- raw readable Markdown captures and attached assets;
+- generic provenance, append-only audit history and rebuildable indexes;
+- generic MCP capture, record, asset and search tools;
 - provider-independent authentication and transport configuration.
 
-Personal Assistant owns the web UI, Today/Planner/project presentation, and dashboard-specific processors. During the initial extraction, an explicitly configured local adapter lets approved capture actions reach that UI service's existing processor endpoint. This preserves current behavior while the processor contract is moved into Core.
+Personal Assistant owns the web UI, Today/Planner/project presentation, domain schemas and processors. Health data may be stored as neutral source records in Core, but calorie calculations, workout interpretation and health goals belong to the Assistant's Health module. During the initial extraction, an explicitly configured local adapter preserves existing behavior while domain logic is moved out of Core.
 
 ## Run locally
 
