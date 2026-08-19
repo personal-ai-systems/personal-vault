@@ -14,6 +14,17 @@ The primary consumer is Personal Assistant:
 - local checkout during the initial migration: `/Users/kirill/development/personal/personal-dashboard`;
 - responsibilities: Today, Planner, project dashboards, recommendations, domain interpretation, agent workflows and approval UI.
 
+## Repository and Workspace Map
+
+- Core repository: `personal-ai-systems/personal-vault-core` at <https://github.com/personal-ai-systems/personal-vault-core>;
+- Core local checkout: `/Users/kirill/development/personal/personal-vault-core`;
+- Personal Assistant repository: `kir-au/personal-assistant` at <https://github.com/kir-au/personal-assistant>;
+- Personal Assistant local checkout during migration: `/Users/kirill/development/personal/personal-dashboard`;
+- separately provisioned live Vault: `/Users/kirill/personal-vault`;
+- current development-chat handoff: `docs/development-handoff.md`.
+
+The Core repository moved from `kir-au/personal-vault-core` to the Personal AI Systems GitHub organization on 19 August 2026. Preserve repository history and use the organization URL for all new clones, documentation and automation. The Assistant repository has not yet been moved; do not assume that decision has been made.
+
 ## Product Boundary
 
 ### Core owns
@@ -86,7 +97,9 @@ Public contracts must not grow methods such as `log_health_workout`, `calculate_
 
 ## Current State — 19 August 2026
 
-- The repository has been extracted and is available at `kir-au/personal-vault-core`.
+- The repository is available at `personal-ai-systems/personal-vault-core`; `main` is the default branch.
+- The GitHub organization display name is Personal AI Systems. `kir-au` is its active admin/owner. The organization was created using the business details entered by the owner for Consense Beauty.
+- The GitHub organization setting does not by itself transfer software copyright or licensing rights. Kirill Frolov remains the initial copyright holder and FSL licensor until a separate formal assignment is documented.
 - The live Vault remains at `/Users/kirill/personal-vault` and is not part of Git.
 - The generic MCP process is launched from this repository and remains publicly reachable through the existing authenticated connector.
 - Personal Assistant is a separate repository and continues to serve the dashboard and domain APIs.
@@ -96,6 +109,7 @@ Public contracts must not grow methods such as `log_health_workout`, `calculate_
 - Personal AI Systems is the approved umbrella brand, with Kirill Frolov as the initial copyright holder.
 - FSL-1.1-ALv2 is the approved source-available licence.
 - Google Drive and iCloud are the initial mass-market backup targets. Neither target is considered ready until an encrypted archive has been restored successfully from it.
+- The dedicated Personal Vault development chat supersedes the Daily Capture chat for product-development work. Durable decisions made there must be reflected back into this repository rather than existing only in chat history.
 
 ## Roadmap to 31 December 2026
 

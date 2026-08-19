@@ -1,5 +1,11 @@
 # Personal Vault Fluid Capture Principle
 
+This document describes the end-to-end capture experience across Personal Vault Core and Personal Assistant. It does not assign domain interpretation to Core.
+
+- Core saves the exact raw capture and attachments, preserves provenance, and exposes generic retrieval and approved-mutation contracts.
+- Personal Assistant owns capture review, Health/Today/Planner/project interpretation, clarification questions, proposals and approval UI.
+- The current MCP server still performs some Assistant work as a temporary compatibility adapter. That code is migration debt and must not define the final Core contract.
+
 Personal Vault should treat input as fluid memory, not as a form that the user must classify.
 
 The user should be able to save anything:
@@ -27,7 +33,7 @@ Do not require the user to choose a schema such as nutrition, workout, project, 
 
 ## Processing Layer
 
-After raw capture is saved, an AI processor reviews it against the current Personal Vault context and project/dashboard structure.
+After raw capture is saved, an Assistant-owned AI processor reviews it against the current Personal Vault context and project/dashboard structure.
 
 The processor may be local, Codex-backed, ChatGPT-backed, another model, or a future service. The implementation can change. The contract should stay stable:
 
@@ -41,7 +47,7 @@ new raw capture
 
 This is intentionally similar to an AI-native database layer: raw memory remains human-readable, while derived state is created by an AI process that understands the system.
 
-The MCP server should call this abstraction `runCaptureReview`, not `runCodexCaptureReview`, in the public architecture. Codex is only the current MVP provider. Later providers may be OpenAI API, another hosted model, Ollama/LM Studio, or a separate local service.
+The cross-product architecture may call this abstraction `runCaptureReview`, not `runCodexCaptureReview`. It belongs behind the Personal Assistant contract, not inside the final neutral Core runtime. Codex is only the current MVP provider. Later providers may be OpenAI API, another hosted model, Ollama/LM Studio, or a separate local service.
 
 The current provider contract is:
 
@@ -56,6 +62,8 @@ runCaptureReview(capturePath)
 If the selected provider times out or fails, `capture_note` should still return a useful response based on a lightweight fallback review rather than failing the whole tool call.
 
 ## Heartbeat Review Bridge
+
+This is a transitional compatibility flow, not the target Core architecture.
 
 For a live Codex-agent workflow, a heartbeat automation can review new captures in this existing Codex thread instead of spawning a new `codex exec` process per capture.
 
@@ -74,7 +82,7 @@ This is not push into ChatGPT. ChatGPT cannot see this Codex thread directly. Th
 
 ## Synchronous MCP Flow
 
-The current preferred flow is synchronous:
+The current compatibility flow is synchronous:
 
 ```text
 ChatGPT calls capture_note.
@@ -103,6 +111,8 @@ Apply this after clarification?
 ## Generic Actions
 
 Public MCP/API actions should stay generic.
+
+The examples below describe Assistant-owned proposals sent through a generic Core mutation envelope. Core may validate the envelope, provenance and permission policy, but it must not understand `health`, `activity_log`, calories or Today semantics.
 
 Good:
 

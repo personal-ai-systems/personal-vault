@@ -2,7 +2,11 @@
 
 Personal Vault Core is the portable, user-owned data and integration product for Personal Vault, a Personal AI Systems project.
 
+Canonical repository: [`personal-ai-systems/personal-vault-core`](https://github.com/personal-ai-systems/personal-vault-core).
+
 The authoritative product boundary and implementation roadmap are in [`AGENTS.md`](AGENTS.md). Read that file before changing the repository.
+
+The current context and verified development handoff are in [`docs/development-handoff.md`](docs/development-handoff.md). It records settled decisions, migration debt, evidence already obtained and the next work order for a fresh development chat.
 
 It owns the generic MCP server and writes only to a separately provisioned private Vault directory. The Vault directory contains the user's records, assets, indexes, imports and logs; none of those records belong in this repository.
 
@@ -23,6 +27,7 @@ The Vault Browser is intentionally storage-oriented. It makes Core usable withou
 ## Release direction
 
 - Umbrella brand: **Personal AI Systems**
+- GitHub organization: [`personal-ai-systems`](https://github.com/personal-ai-systems)
 - Product: **Personal Vault**
 - Initial copyright holder and licensor: **Kirill Frolov**
 - Licence: **FSL-1.1-ALv2** (Fair Source/source-available, with Apache 2.0 for each version after two years)

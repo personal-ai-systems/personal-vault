@@ -4,6 +4,11 @@
   "private": true,
   "description": "User-owned Markdown vault engine and MCP server.",
   "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/personal-ai-systems/personal-vault-core.git"
+  },
+  "homepage": "https://github.com/personal-ai-systems/personal-vault-core#readme",
   "type": "module",
   "engines": {
     "node": ">=24"
