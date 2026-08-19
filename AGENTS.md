@@ -21,7 +21,8 @@ The primary consumer is Personal Assistant:
 - Personal Assistant repository: `kir-au/personal-assistant` at <https://github.com/kir-au/personal-assistant>;
 - Personal Assistant local checkout during migration: `/Users/kirill/development/personal/personal-dashboard`;
 - separately provisioned live Vault: `/Users/kirill/personal-vault`;
-- current development-chat handoff: `docs/development-handoff.md`.
+- durable development context: `docs/development-handoff.md`;
+- continuous development runner design: `docs/continuous-development-runner.md`.
 
 The Core repository moved from `kir-au/personal-vault-core` to the Personal AI Systems GitHub organization on 19 August 2026. Preserve repository history and use the organization URL for all new clones, documentation and automation. The Assistant repository has not yet been moved; do not assume that decision has been made.
 
@@ -109,13 +110,30 @@ Public contracts must not grow methods such as `log_health_workout`, `calculate_
 - Personal AI Systems is the approved umbrella brand, with Kirill Frolov as the initial copyright holder.
 - FSL-1.1-ALv2 is the approved source-available licence.
 - Google Drive and iCloud are the initial mass-market backup targets. Neither target is considered ready until an encrypted archive has been restored successfully from it.
-- The dedicated Personal Vault development chat supersedes the Daily Capture chat for product-development work. Durable decisions made there must be reflected back into this repository rather than existing only in chat history.
+- This is the canonical Personal Vault development chat. Durable decisions made here must be reflected back into this repository rather than existing only in chat history.
 
-## Roadmap to 31 December 2026
+## Continuous Development Operating Model
+
+Development is continuous and evidence-gated, not deadline-gated. The normal human-in-the-loop cycle is:
+
+```text
+identify the next bounded step
+-> request approval in the canonical development chat
+-> implement in an isolated branch/worktree
+-> run deterministic checks
+-> report the exact diff, evidence and any provider-limit stop
+-> request approval for the next consequential step
+```
+
+The desired delivery control plane runs continuously and can resume after restarts, rate limits or provider-credit/account pauses. It is development infrastructure, not a Personal Vault Core product feature, and must not introduce agent orchestration into the Core runtime. Its design is specified in `docs/continuous-development-runner.md`.
+
+An approved work package may contain multiple safe, reversible implementation subtasks. Separate approval is still required before public releases, destructive changes, credential creation or expansion, legal ownership changes, production migrations and contract-breaking compatibility changes. Credit/account acquisition and switching remain user-managed and outside the runner.
+
+## Continuous Evidence Gates
 
 ### Gate 1 — Boundary, inventory and contracts
 
-Target: August.
+Sequence: current product-development gate.
 
 - Maintain an ownership matrix for every extracted or shared path: Core, Assistant, adapter, migration-only or obsolete.
 - Freeze the generic record, asset, provenance, audit, search and MCP/API contracts.
@@ -128,7 +146,7 @@ Exit evidence: reviewed ownership matrix, dependency graph, versioned contract, 
 
 ### Gate 2 — Neutral runnable Core
 
-Target: September.
+Sequence: after Gate 1 exit evidence is complete.
 
 - Remove Health, nutrition, calorie, Today, Planner and project heuristics from Core.
 - Move domain interpretation and proposal generation to Personal Assistant processors.
@@ -141,7 +159,7 @@ Exit evidence: a non-technical user can install Core, browse a fixture Vault, ca
 
 ### Gate 3 — Encryption, backup and recovery
 
-Target: October.
+Sequence: after the neutral Core contract and fixture workflow are stable.
 
 - Define the threat model and encryption boundary.
 - Keep encryption keys outside synced archives.
@@ -153,7 +171,7 @@ Exit evidence: two successful restore reports with hashes, missing-file detectio
 
 ### Gate 4 — Multi-device and Assistant integration
 
-Target: November.
+Sequence: after backup/recovery behavior is reproducible.
 
 - Support at least two devices with explicit single-writer or conflict-resolution rules.
 - Version API/MCP compatibility and migrations.
@@ -165,26 +183,27 @@ Exit evidence: capture to evidence-linked interpretation to approved mutation wo
 
 ### Gate 5 — Release candidate
 
-Target: December.
+Sequence: after the earlier gates have executable evidence.
 
 - Complete install, upgrade, security, backup, restore and troubleshooting documentation.
 - Build a redacted demo Vault and deterministic end-to-end tests.
 - Verify ongoing FSL, attribution, trademark and public-release compliance.
 - Run clean-install, upgrade, corruption-recovery and connector tests.
-- Tag a release candidate and make an evidence-based ship/no-ship decision by 31 December.
+- Tag release candidates whenever the full checklist passes and make each ship/no-ship decision from current evidence.
 
 Exit evidence: reproducible package, tested documentation, release notes and signed release checklist.
 
 ## Immediate Work Order
 
-1. Write the ownership matrix and identify all transitional domain behavior in `mcp/personal-vault-server.mjs`.
-2. Define Core contract v1 with stable IDs, generic record envelopes, assets, provenance, audit events and search results.
-3. Add contract tests that run against a temporary fixture Vault.
-4. Introduce Assistant-owned endpoints for Today plan, capture interpretation and approved domain updates.
-5. Migrate the mobile ChatGPT flow without changing the public connector URL.
-6. Remove Health/calorie/workout and Planner/project interpretation from Core after compatibility tests pass.
-7. Remove `DASHBOARD_BASE_URL` from Core when no caller depends on the adapter.
-8. Build the first storage-oriented Vault Browser slice only after the record and mutation contracts are frozen.
+1. Freeze the continuous development runner's task, approval, provider-pause, evidence and recovery contracts without putting the runner inside Core.
+2. Write the ownership matrix and identify all transitional domain behavior in `mcp/personal-vault-server.mjs`.
+3. Define Core contract v1 with stable IDs, generic record envelopes, assets, provenance, audit events and search results.
+4. Add contract tests that run against a temporary fixture Vault.
+5. Introduce Assistant-owned endpoints for Today plan, capture interpretation and approved domain updates.
+6. Migrate the mobile ChatGPT flow without changing the public connector URL.
+7. Remove Health/calorie/workout and Planner/project interpretation from Core after compatibility tests pass.
+8. Remove `DASHBOARD_BASE_URL` from Core when no caller depends on the adapter.
+9. Build the first storage-oriented Vault Browser slice only after the record and mutation contracts are frozen.
 
 Do not remove compatibility behavior first and repair consumers afterward. The migration order is: add the consumer capability, verify it, switch callers, observe, then remove the adapter.
 
