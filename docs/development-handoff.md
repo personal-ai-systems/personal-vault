@@ -16,7 +16,7 @@ For any conflict, `AGENTS.md` is the authoritative project brief. This handoff a
 - Visibility: private until a separately approved public-alpha change after the pre-public safety gate.
 - Default branch: `main`.
 - Local Core checkout: `/Users/kirill/development/personal/personal-vault-core`.
-- Current handoff baseline commit: `201f493` (`Define Personal AI Systems release direction`).
+- Product-decision baseline before this handoff: `201f493` (`Define Personal AI Systems release direction`). Always verify the current `main` HEAD before starting work.
 - `kir-au` is the active organization admin/owner and repository maintainer.
 - The organization was created with the business details entered by the owner for Consense Beauty.
 - Personal Assistant currently remains at <https://github.com/kir-au/personal-assistant> and `/Users/kirill/development/personal/personal-dashboard`. Moving it into the organization is not yet an approved decision.
