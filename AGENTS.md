@@ -21,7 +21,8 @@ The primary consumer is Personal Assistant:
 - Personal Assistant repository: `kir-au/personal-assistant` at <https://github.com/kir-au/personal-assistant>;
 - Personal Assistant local checkout during migration: `/Users/kirill/development/personal/personal-dashboard`;
 - separately provisioned live Vault: `/Users/kirill/personal-vault`;
-- durable development context: `docs/development-handoff.md`.
+- durable development context: `docs/development-handoff.md`;
+- Gate 1 ownership and dependency inventory: `docs/ownership-matrix.md`.
 
 The Core repository moved from `kir-au/personal-vault-core` to the Personal AI Systems GitHub organization on 19 August 2026. Preserve repository history and use the organization URL for all new clones, documentation and automation. The Assistant repository has not yet been moved; do not assume that decision has been made.
 
@@ -198,7 +199,7 @@ Exit evidence: reproducible package, tested documentation, release notes and sig
 
 ## Immediate Work Order
 
-1. Write the ownership matrix and identify all transitional domain behavior in `mcp/personal-vault-server.mjs`.
+1. Maintain the reviewed ownership matrix and transitional behavior inventory in `docs/ownership-matrix.md` as paths and tools change.
 2. Define Core contract v1 with stable IDs, generic record envelopes, assets, provenance, audit events and search results.
 3. Add contract tests that run against a temporary fixture Vault.
 4. Introduce Assistant-owned endpoints for Today plan, capture interpretation and approved domain updates.

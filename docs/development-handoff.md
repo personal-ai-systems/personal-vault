@@ -140,7 +140,7 @@ Development should continue in this canonical Codex task whenever an approved bo
 8. Only then remove Health/calorie/workout, Today/Planner/project heuristics and `DASHBOARD_BASE_URL` from Core.
 9. Freeze the record/mutation contract before building the Vault Browser beyond a minimal read-only spike.
 
-The next implementation slice is Gate 1 ownership/dependency inventory. Do not jump directly to UI, backup claims or public release.
+The Gate 1 ownership/dependency inventory is recorded in `docs/ownership-matrix.md`. The next bounded slice is the reviewed Core contract v1 design; do not begin implementation, UI, backup claims or public release before that contract is approved.
 
 ## Working Rules for the Dedicated Development Chat
 
@@ -173,5 +173,6 @@ Resolve these only when they block the current Gate 1 work or materially affect 
 - Commit `201f493` is on `main` and contains the brand, product boundary, FSL licence direction, Vault Browser scope and Google Drive/iCloud backup direction.
 - The repository page, owner, private badge and latest commit were visually verified in the actual macOS Google Chrome application.
 - `git diff --check`, JavaScript syntax validation, package metadata parsing and dependency-tree validation passed for commit `201f493`.
+- Gate 1 path/tool ownership, reverse dependencies, known consumers and transitional MCP behavior were inventoried in `docs/ownership-matrix.md` against Core baseline `f56b0c6`; no compatibility code was removed or restarted.
 
 This evidence does not prove runtime MCP behavior, mobile connector compatibility, security readiness, backup/restore, clean installation or multi-device operation. Those remain future acceptance work.
