@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "User-owned Markdown vault engine and MCP server.",
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "engines": {
     "node": ">=24"

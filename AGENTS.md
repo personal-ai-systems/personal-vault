@@ -4,7 +4,7 @@ This file is the authoritative project brief for humans and coding agents workin
 
 ## Mission
 
-Personal Vault Core is a neutral, user-owned knowledge and data layer. It preserves information durably, keeps it human-readable where practical, records provenance and mutation history, and exposes stable generic interfaces to consumers.
+Personal Vault Core is a neutral, user-owned knowledge and data product published under the Personal AI Systems project brand. It preserves information durably, keeps it human-readable where practical, records provenance and mutation history, and exposes stable generic interfaces to consumers.
 
 Core is not a personal assistant, planner, health application, trading application, or project dashboard. Those products consume Core through versioned contracts.
 
@@ -27,6 +27,7 @@ The primary consumer is Personal Assistant:
 - import, export, validation and schema-version migration infrastructure;
 - authentication, authorization and stable MCP/API transport;
 - encrypted backup, integrity manifests and non-destructive restore;
+- a thin, storage-oriented Vault Browser for browsing, Markdown preview and editing, capture, search, archive, recoverable trash, export, backup status and restore;
 - packaging, installation, upgrade and recovery documentation.
 
 ### Core must not own
@@ -37,10 +38,23 @@ The primary consumer is Personal Assistant:
 - Health, Wealth, Trading, Family or Business dashboards;
 - project-specific routing rules or public project-specific tools;
 - recommendation generation, model routing or autonomous agent orchestration;
-- React, Next.js or another consumer UI framework;
+- domain dashboards, recommendations or workflow-specific UI inside the storage-oriented Vault Browser;
 - a second application-owned copy of canonical records.
 
 Domain applications may store their source records in Core, but Core must remain unaware of their meaning. For example, a meal photo, Fitbit export or weight measurement may be stored as a generic record with provenance and attachments. Personal Assistant's Health module owns the health schema, calorie calculations, confidence labels, trends, goals and UI. Core stores and retrieves the record; Health interprets it.
+
+The Vault Browser is part of Core because Core must be useful to a non-technical person without Personal Assistant or an AI model. Its UI reflects records, folders, assets, versions, provenance, backup and restore state. It must not infer domain meaning or become a second Personal Assistant.
+
+## Brand, Licence and Public Release Direction
+
+- `Personal AI Systems` is the umbrella project and publishing brand.
+- `Personal Vault` is the user-facing product name; `personal-vault-core` remains the technical repository/package name.
+- Kirill Frolov is the initial copyright holder and licensor unless ownership is formally assigned to a legal entity later.
+- The repository uses `FSL-1.1-ALv2`: source is visible and available for permitted purposes, competing commercial use is restricted, and each released version receives the Apache License 2.0 on the second anniversary of its publication.
+- This is Fair Source/source-available software, not OSI Open Source before the future licence takes effect.
+- The target is a public alpha after the pre-public safety gate passes. Changing GitHub visibility is a separate approved release action, not an automatic consequence of updating this document.
+
+The pre-public safety gate requires, at minimum: full Git history secret/PII scanning, a redacted fixture Vault, reproducible installation, basic contract and security tests, `SECURITY.md`, clear alpha limitations, and confirmation that no live Vault contents, credentials, backups, imports or logs are present in the repository or its history.
 
 ## Canonical Data Rules
 
@@ -70,7 +84,7 @@ Tools such as `get_today_plan`, Health-specific capture interpretation, calorie 
 
 Public contracts must not grow methods such as `log_health_workout`, `calculate_calorie_deficit`, `add_business_task` or similar domain verbs. Consumers may use namespaced metadata internally, but Core validates only the generic envelope and access policy.
 
-## Current State — 18 August 2026
+## Current State — 19 August 2026
 
 - The repository has been extracted and is available at `kir-au/personal-vault-core`.
 - The live Vault remains at `/Users/kirill/personal-vault` and is not part of Git.
@@ -78,6 +92,10 @@ Public contracts must not grow methods such as `log_health_workout`, `calculate_
 - Personal Assistant is a separate repository and continues to serve the dashboard and domain APIs.
 - The current MCP implementation still contains transitional Health, nutrition, project-routing and Today-plan logic, plus a temporary `DASHBOARD_BASE_URL` adapter. This is migration debt, not the desired architecture.
 - The first release must preserve compatibility while that debt is removed behind versioned contracts and tests.
+- The GitHub repository remains private until the pre-public safety gate is executed; public source is the approved direction.
+- Personal AI Systems is the approved umbrella brand, with Kirill Frolov as the initial copyright holder.
+- FSL-1.1-ALv2 is the approved source-available licence.
+- Google Drive and iCloud are the initial mass-market backup targets. Neither target is considered ready until an encrypted archive has been restored successfully from it.
 
 ## Roadmap to 31 December 2026
 
@@ -89,8 +107,10 @@ Target: August.
 - Freeze the generic record, asset, provenance, audit, search and MCP/API contracts.
 - Define compatibility fixtures and a rollback procedure before removing transitional behavior.
 - Document which current tools are Core tools and which are Assistant compatibility tools.
+- Freeze the storage-oriented Vault Browser boundary and its safe file operations.
+- Complete the pre-public safety gate and prepare a separately approved public-alpha visibility change.
 
-Exit evidence: reviewed ownership matrix, dependency graph, versioned contract, compatibility tests and rollback steps.
+Exit evidence: reviewed ownership matrix, dependency graph, versioned contract, compatibility tests, rollback steps, Vault Browser boundary and a signed pre-public checklist.
 
 ### Gate 2 — Neutral runnable Core
 
@@ -100,9 +120,10 @@ Target: September.
 - Move domain interpretation and proposal generation to Personal Assistant processors.
 - Replace the reverse Core-to-Assistant HTTP dependency with a clean consumer contract or event/subscription mechanism.
 - Add CLI commands for init, validate, capture, read, search, export and rebuild-indexes.
+- Add the thin Vault Browser with Markdown preview/editing, capture, search, archive, recoverable trash, export and backup/restore status.
 - Prove a clean install against a redacted fixture Vault without Personal Assistant.
 
-Exit evidence: a clean environment can capture, retrieve, search, rebuild and export generic records without Next.js, domain schemas or a model provider.
+Exit evidence: a non-technical user can install Core, browse a fixture Vault, capture and edit Markdown, retrieve and search records, archive and recover an item, rebuild indexes and export without Personal Assistant, domain schemas or a model provider.
 
 ### Gate 3 — Encryption, backup and recovery
 
@@ -110,7 +131,7 @@ Target: October.
 
 - Define the threat model and encryption boundary.
 - Keep encryption keys outside synced archives.
-- Produce encrypted, versioned Google Drive backups and a second independent backup.
+- Produce encrypted, versioned backups to Google Drive and iCloud through provider adapters.
 - Add integrity manifests, retention rules and a non-destructive restore workflow.
 - Run restore drills from both targets into temporary locations.
 
@@ -134,7 +155,7 @@ Target: December.
 
 - Complete install, upgrade, security, backup, restore and troubleshooting documentation.
 - Build a redacted demo Vault and deterministic end-to-end tests.
-- Finalize licence and public/private repository boundaries.
+- Verify ongoing FSL, attribution, trademark and public-release compliance.
 - Run clean-install, upgrade, corruption-recovery and connector tests.
 - Tag a release candidate and make an evidence-based ship/no-ship decision by 31 December.
 
@@ -149,6 +170,7 @@ Exit evidence: reproducible package, tested documentation, release notes and sig
 5. Migrate the mobile ChatGPT flow without changing the public connector URL.
 6. Remove Health/calorie/workout and Planner/project interpretation from Core after compatibility tests pass.
 7. Remove `DASHBOARD_BASE_URL` from Core when no caller depends on the adapter.
+8. Build the first storage-oriented Vault Browser slice only after the record and mutation contracts are frozen.
 
 Do not remove compatibility behavior first and repair consumers afterward. The migration order is: add the consumer capability, verify it, switch callers, observe, then remove the adapter.
 
@@ -160,9 +182,10 @@ Do not remove compatibility behavior first and repair consumers afterward. The m
 - Never turn imported claims into trusted facts merely because they came from an integration or AI model.
 - Preserve source references through every transformation.
 - Require explicit approval for meaningful mutations and separate authorization for destructive, financial, medical, credential or public actions.
+- Archive and recoverable trash are the default removal operations; permanent deletion requires separate authorization and auditable evidence.
 - Do not claim backup, restore, multi-device or security readiness without executed acceptance evidence.
 - Do not add a competitor feature unless it supports the selected end-to-end user journey.
 
 ## Definition of Done for Core
 
-Core is independently successful when it can be installed without Personal Assistant, open or initialize a Vault, store a generic record and assets, retrieve and search it, rebuild all indexes, export it, validate integrity and restore it from documented backups. No test or runtime path should require Health, Planner, project dashboards, Next.js or a specific AI provider.
+Core is independently successful when a non-technical user can install it without Personal Assistant, open or initialize a Vault in the thin Vault Browser, store and safely edit a generic record and assets, retrieve and search it, archive and recover it, rebuild all indexes, export it, validate integrity and restore encrypted backups from both Google Drive and iCloud. No test or runtime path should require Health, Planner, project dashboards or a specific AI provider.
