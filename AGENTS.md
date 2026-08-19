@@ -21,8 +21,7 @@ The primary consumer is Personal Assistant:
 - Personal Assistant repository: `kir-au/personal-assistant` at <https://github.com/kir-au/personal-assistant>;
 - Personal Assistant local checkout during migration: `/Users/kirill/development/personal/personal-dashboard`;
 - separately provisioned live Vault: `/Users/kirill/personal-vault`;
-- durable development context: `docs/development-handoff.md`;
-- continuous development runner design: `docs/continuous-development-runner.md`.
+- durable development context: `docs/development-handoff.md`.
 
 The Core repository moved from `kir-au/personal-vault-core` to the Personal AI Systems GitHub organization on 19 August 2026. Preserve repository history and use the organization URL for all new clones, documentation and automation. The Assistant repository has not yet been moved; do not assume that decision has been made.
 
@@ -114,20 +113,24 @@ Public contracts must not grow methods such as `log_health_workout`, `calculate_
 
 ## Continuous Development Operating Model
 
-Development is continuous and evidence-gated, not deadline-gated. The normal human-in-the-loop cycle is:
+Development is continuous and evidence-gated, not deadline-gated. This canonical Codex task/chat is the operating surface. Do not create a separate development-runner repository, external control plane or product runtime for this workflow.
+
+The normal human-in-the-loop cycle is:
 
 ```text
-identify the next bounded step
--> request approval in the canonical development chat
--> implement in an isolated branch/worktree
+read the current instructions, roadmap and repository state
+-> identify one next bounded step
+-> request approval in this Codex task
+-> implement the approved step in the current repository
 -> run deterministic checks
--> report the exact diff, evidence and any provider-limit stop
--> request approval for the next consequential step
+-> report the exact diff, evidence and remaining risk in this task
+-> wait for the user's review and approval
+-> pick up the next roadmap step
 ```
 
-The desired delivery control plane runs continuously and can resume after restarts, rate limits or provider-credit/account pauses. It is development infrastructure, not a Personal Vault Core product feature, and must not introduce agent orchestration into the Core runtime. Its design is specified in `docs/continuous-development-runner.md`.
+The workflow continues in this task whenever the user has approved the next step and Codex is available. A built-in Codex heartbeat may be used only as a wake-up for this same task after the user approves its cadence; it must not create another repository, a parallel development owner or an external runner. The workflow does not depend on a scheduler: an approval gate intentionally pauses work until the user responds here.
 
-An approved work package may contain multiple safe, reversible implementation subtasks. Separate approval is still required before public releases, destructive changes, credential creation or expansion, legal ownership changes, production migrations and contract-breaking compatibility changes. Credit/account acquisition and switching remain user-managed and outside the runner.
+An approved work package may contain multiple safe, reversible implementation subtasks. Separate approval is still required before public releases, destructive changes, credential creation or expansion, legal ownership changes, production migrations and contract-breaking compatibility changes. If a provider limit, rate limit or account interruption stops work, preserve the repository state, report the stop here and resume in this task after the user restores access or switches account. Codex must not inspect billing, calculate remaining credits, purchase credits or manage provider accounts.
 
 ## Continuous Evidence Gates
 
@@ -195,15 +198,14 @@ Exit evidence: reproducible package, tested documentation, release notes and sig
 
 ## Immediate Work Order
 
-1. Freeze the continuous development runner's task, approval, provider-pause, evidence and recovery contracts without putting the runner inside Core.
-2. Write the ownership matrix and identify all transitional domain behavior in `mcp/personal-vault-server.mjs`.
-3. Define Core contract v1 with stable IDs, generic record envelopes, assets, provenance, audit events and search results.
-4. Add contract tests that run against a temporary fixture Vault.
-5. Introduce Assistant-owned endpoints for Today plan, capture interpretation and approved domain updates.
-6. Migrate the mobile ChatGPT flow without changing the public connector URL.
-7. Remove Health/calorie/workout and Planner/project interpretation from Core after compatibility tests pass.
-8. Remove `DASHBOARD_BASE_URL` from Core when no caller depends on the adapter.
-9. Build the first storage-oriented Vault Browser slice only after the record and mutation contracts are frozen.
+1. Write the ownership matrix and identify all transitional domain behavior in `mcp/personal-vault-server.mjs`.
+2. Define Core contract v1 with stable IDs, generic record envelopes, assets, provenance, audit events and search results.
+3. Add contract tests that run against a temporary fixture Vault.
+4. Introduce Assistant-owned endpoints for Today plan, capture interpretation and approved domain updates.
+5. Migrate the mobile ChatGPT flow without changing the public connector URL.
+6. Remove Health/calorie/workout and Planner/project interpretation from Core after compatibility tests pass.
+7. Remove `DASHBOARD_BASE_URL` from Core when no caller depends on the adapter.
+8. Build the first storage-oriented Vault Browser slice only after the record and mutation contracts are frozen.
 
 Do not remove compatibility behavior first and repair consumers afterward. The migration order is: add the consumer capability, verify it, switch callers, observe, then remove the adapter.
 

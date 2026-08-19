@@ -126,26 +126,27 @@ add Assistant-owned equivalent
 
 Do not declare a gate complete from documentation alone. Keep executed evidence, fixtures, hashes, test output and recovery reports.
 
-Development should continue whenever an approved bounded task and a working model/provider account are available. The target 24/7 control plane is documented in `docs/continuous-development-runner.md`. It reports back to this chat and pauses safely at approval, provider-limit, rate-limit and compatibility gates.
+Development should continue in this canonical Codex task whenever an approved bounded task and a working model/provider account are available. There is no separate development runner, control-plane repository or external service. After each verified step, Codex reports here and waits for the user's review and approval before picking up the next roadmap step. A provider or rate limit is a safe pause: preserve the repository state and resume in this same task after the user restores access or switches account.
 
 ## Immediate Work Order for the New Development Chat
 
-1. Read `AGENTS.md`, `README.md`, this context, `docs/continuous-development-runner.md`, `docs/personal-vault-fluid-capture.md`, the MCP server and schema before proposing changes.
-2. Freeze the continuous runner's task, approval, provider-pause, evidence and recovery contracts.
-3. Produce an ownership matrix for every extracted/shared path and every registered MCP tool: Core, Assistant, compatibility adapter, migration-only or obsolete.
-4. Inventory all reverse dependencies from Core to Personal Assistant and all consumers of current MCP tools.
-5. Define Core contract v1: stable record IDs, generic record envelope, asset descriptors, provenance, audit events, search results, change cursor and approved mutation envelope.
-6. Add temporary-fixture contract tests and rollback fixtures before moving or deleting behavior.
-7. Introduce Assistant-owned equivalents for Today plan, capture review/interpretation and approved domain updates.
-8. Migrate and verify the mobile ChatGPT connector while preserving the public connector URL.
-9. Only then remove Health/calorie/workout, Today/Planner/project heuristics and `DASHBOARD_BASE_URL` from Core.
-10. Freeze the record/mutation contract before building the Vault Browser beyond a minimal read-only spike.
+1. Read `AGENTS.md`, `README.md`, this context, `docs/personal-vault-fluid-capture.md`, the MCP server and schema before proposing changes.
+2. Produce an ownership matrix for every extracted/shared path and every registered MCP tool: Core, Assistant, compatibility adapter, migration-only or obsolete.
+3. Inventory all reverse dependencies from Core to Personal Assistant and all consumers of current MCP tools.
+4. Define Core contract v1: stable record IDs, generic record envelope, asset descriptors, provenance, audit events, search results, change cursor and approved mutation envelope.
+5. Add temporary-fixture contract tests and rollback fixtures before moving or deleting behavior.
+6. Introduce Assistant-owned equivalents for Today plan, capture review/interpretation and approved domain updates.
+7. Migrate and verify the mobile ChatGPT connector while preserving the public connector URL.
+8. Only then remove Health/calorie/workout, Today/Planner/project heuristics and `DASHBOARD_BASE_URL` from Core.
+9. Freeze the record/mutation contract before building the Vault Browser beyond a minimal read-only spike.
 
-The next implementation slice should freeze the runner control contracts and then execute Gate 1 ownership/dependency inventory. Do not jump directly to UI, backup claims or public release.
+The next implementation slice is Gate 1 ownership/dependency inventory. Do not jump directly to UI, backup claims or public release.
 
 ## Working Rules for the Dedicated Development Chat
 
 - Treat this chat as the canonical Personal Vault development chat.
+- Keep the entire development loop in this Codex task. Do not create a separate runner repository, external control plane or parallel task owner.
+- After completing and verifying one approved bounded step, report here and wait for the user's review before beginning the next step.
 - Start each substantial task by reading current repository instructions and verifying current Git/GitHub state; do not rely only on this handoff.
 - Ask only questions that remain genuinely unresolved. Do not reopen the Core/Assistant boundary, brand, FSL direction, Google Drive/iCloud targets or the existence of the thin Vault Browser without new evidence.
 - Preserve compatibility and source material. Never mutate the live Vault as part of repository tests; use temporary redacted fixtures.

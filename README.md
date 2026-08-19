@@ -6,7 +6,7 @@ Canonical repository: [`personal-ai-systems/personal-vault-core`](https://github
 
 The authoritative product boundary and implementation roadmap are in [`AGENTS.md`](AGENTS.md). Read that file before changing the repository.
 
-The durable development context is in [`docs/development-handoff.md`](docs/development-handoff.md). It records settled decisions, migration debt, evidence already obtained and the next work order. The separate 24/7 delivery-control design is in [`docs/continuous-development-runner.md`](docs/continuous-development-runner.md); that runner is development infrastructure, not part of the Core runtime.
+The durable development context is in [`docs/development-handoff.md`](docs/development-handoff.md). It records settled decisions, migration debt, evidence already obtained and the next work order. Development is coordinated in the canonical Codex task: one approved roadmap step at a time, followed by verification and user review in that same task.
 
 It owns the generic MCP server and writes only to a separately provisioned private Vault directory. The Vault directory contains the user's records, assets, indexes, imports and logs; none of those records belong in this repository.
 
