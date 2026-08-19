@@ -10,7 +10,7 @@ For conflicts, `AGENTS.md` remains authoritative.
 
 ## Classification
 
-- **Core** — neutral storage, provenance, audit, retrieval, search, transport or product infrastructure that belongs in Personal Vault Core.
+- **Core** — neutral storage, provenance, audit, retrieval, search, transport or product infrastructure that belongs in Personal Vault's Core layer.
 - **Assistant** — domain interpretation, Today/Planner, Health, project routing, model orchestration or approval experience that belongs in Personal Assistant.
 - **Compatibility adapter** — temporary behavior required by an existing client while an Assistant-owned equivalent and versioned migration path are introduced.
 - **Migration-only** — code, schema, setting or documentation retained only to support the current extraction and migration.
@@ -46,8 +46,10 @@ The target direction removes the Core-to-Codex and Core-to-Assistant domain depe
 | `LICENSE` | FSL-1.1-ALv2 terms | Core | Keep; verify release-year/copyright metadata before public alpha. |
 | `README.md` | Product overview, boundary and local start instructions | Core | Keep; make installation claims only after clean-install evidence. |
 | `docs/development-handoff.md` | Durable decisions, debt and working context | Core | Keep synchronized with verified milestones. |
+| `docs/core-contract-v1.md` | Proposed Core v1 contract and legacy-tool migration mapping | Core | Review before freezing; after approval, make incompatible changes only in a new contract version. |
 | `docs/personal-vault-fluid-capture.md` | Core raw-first rule mixed with Assistant review, domain examples and heartbeat compatibility flow | Mixed: split required | Retain the generic capture/provenance contract in Core. Move review/interpretation/heartbeat workflow details to Assistant migration documentation. |
 | `docs/ownership-matrix.md` | Gate 1 ownership and dependency evidence | Core | Maintain until all compatibility rows have an executed disposition. |
+| `contracts/v1/core-contract-v1.schema.json` | Machine-readable neutral record, asset, provenance, audit, search, cursor and mutation definitions | Core | Validate with temporary redacted fixtures before runtime adoption. |
 | `mcp/capture-review.schema.json` | Assistant review response and domain-oriented action IDs | Migration-only / Assistant | Move the review contract to Assistant. Replace any Core mutation schema with a neutral, versioned envelope defined by Core contract v1. |
 | `mcp/personal-vault-server.mjs` | Neutral MCP transport and raw storage combined with Assistant interpretation and adapters | Mixed: split required | Extract neutral modules and contracts; keep compatibility shims only until equivalent Assistant endpoints and connector fixtures pass. |
 | `package.json` | Core package metadata and MCP runtime dependencies | Core | Keep. Resolve package/server version mismatch and add test/CLI scripts in later approved steps. |
@@ -156,4 +158,4 @@ This inventory step is complete when:
 - no compatibility behavior has been removed;
 - syntax, dependency and documentation checks pass.
 
-The next bounded roadmap step is to define **Core contract v1** for stable record IDs, generic record envelopes, assets, provenance, audit events, search results, change cursors and approved generic mutations. That contract must be reviewed before implementation changes begin.
+Core contract v1 is proposed in `docs/core-contract-v1.md` and `contracts/v1/core-contract-v1.schema.json`. The next bounded roadmap step is user review and freeze of that contract, followed by temporary-fixture contract tests and rollback fixtures; no runtime migration starts before those tests pass.

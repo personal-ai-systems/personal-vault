@@ -12,10 +12,10 @@ For any conflict, `AGENTS.md` is the authoritative project brief. This handoff a
 ## Verified Repository State
 
 - GitHub organization: `Personal AI Systems` / `personal-ai-systems`.
-- Core repository: <https://github.com/personal-ai-systems/personal-vault-core>.
+- Core repository: <https://github.com/personal-ai-systems/personal-vault>.
 - Visibility: private until a separately approved public-alpha change after the pre-public safety gate.
 - Default branch: `main`.
-- Local Core checkout: `/Users/kirill/development/personal/personal-vault-core`.
+- Local Core checkout: `/Users/kirill/development/personal/personal-vault`.
 - Product-decision baseline before this handoff: `201f493` (`Define Personal AI Systems release direction`). Always verify the current `main` HEAD before starting work.
 - `kir-au` is the active organization admin/owner and repository maintainer.
 - The organization was created with the business details entered by the owner for Consense Beauty.
@@ -28,7 +28,8 @@ For any conflict, `AGENTS.md` is the authoritative project brief. This handoff a
 
 - Umbrella and publishing brand: **Personal AI Systems**.
 - User-facing product: **Personal Vault**.
-- Technical repository/package: `personal-vault-core`.
+- Technical repository/package: `personal-vault`.
+- `Core` is the internal neutral storage/API layer, not a separate product name.
 - GitHub organization business association: **Consense Beauty**, as entered by the owner.
 - Initial software copyright holder and licensor: **Kirill Frolov**, unless and until a separate legal assignment is documented. Creating a business-owned GitHub organization did not itself transfer copyright.
 
@@ -133,14 +134,14 @@ Development should continue in this canonical Codex task whenever an approved bo
 1. Read `AGENTS.md`, `README.md`, this context, `docs/personal-vault-fluid-capture.md`, the MCP server and schema before proposing changes.
 2. Produce an ownership matrix for every extracted/shared path and every registered MCP tool: Core, Assistant, compatibility adapter, migration-only or obsolete.
 3. Inventory all reverse dependencies from Core to Personal Assistant and all consumers of current MCP tools.
-4. Define Core contract v1: stable record IDs, generic record envelope, asset descriptors, provenance, audit events, search results, change cursor and approved mutation envelope.
+4. Review and freeze the proposed Core contract v1 in `docs/core-contract-v1.md` and `contracts/v1/core-contract-v1.schema.json`; incompatible changes after approval require a new version.
 5. Add temporary-fixture contract tests and rollback fixtures before moving or deleting behavior.
 6. Introduce Assistant-owned equivalents for Today plan, capture review/interpretation and approved domain updates.
 7. Migrate and verify the mobile ChatGPT connector while preserving the public connector URL.
 8. Only then remove Health/calorie/workout, Today/Planner/project heuristics and `DASHBOARD_BASE_URL` from Core.
-9. Freeze the record/mutation contract before building the Vault Browser beyond a minimal read-only spike.
+9. Keep the record/mutation contract frozen before building the Vault Browser beyond a minimal read-only spike.
 
-The Gate 1 ownership/dependency inventory is recorded in `docs/ownership-matrix.md`. The next bounded slice is the reviewed Core contract v1 design; do not begin implementation, UI, backup claims or public release before that contract is approved.
+The Gate 1 ownership/dependency inventory is recorded in `docs/ownership-matrix.md`. Core contract v1 is proposed in `docs/core-contract-v1.md` and its schema. The next bounded slice is user review and freeze, then temporary-fixture contract tests and rollback fixtures; do not begin runtime migration, UI, backup claims or public release before they pass.
 
 ## Working Rules for the Dedicated Development Chat
 
@@ -167,12 +168,13 @@ Resolve these only when they block the current Gate 1 work or materially affect 
 
 ## Evidence Already Obtained
 
-- Repository transfer to `personal-ai-systems/personal-vault-core` completed with history preserved.
-- Remote `origin` uses `git@github.com:personal-ai-systems/personal-vault-core.git`.
+- Repository transfer from `kir-au/personal-vault-core` to Personal AI Systems completed with history preserved, followed by the approved rename to `personal-ai-systems/personal-vault`.
+- Remote `origin` uses `git@github.com:personal-ai-systems/personal-vault.git`; the local checkout and configured LaunchAgent use the matching `personal-vault` path.
 - GitHub repository was verified private on 19 August 2026.
 - Commit `201f493` is on `main` and contains the brand, product boundary, FSL licence direction, Vault Browser scope and Google Drive/iCloud backup direction.
 - The repository page, owner, private badge and latest commit were visually verified in the actual macOS Google Chrome application.
 - `git diff --check`, JavaScript syntax validation, package metadata parsing and dependency-tree validation passed for commit `201f493`.
 - Gate 1 path/tool ownership, reverse dependencies, known consumers and transitional MCP behavior were inventoried in `docs/ownership-matrix.md` against Core baseline `f56b0c6`; no compatibility code was removed or restarted.
+- Core contract v1 was proposed as a neutral, machine-readable record/asset/provenance/audit/search/cursor/mutation contract. It contains no Health, Today, Planner, project or model-routing fields and makes no runtime-implementation claim.
 
 This evidence does not prove runtime MCP behavior, mobile connector compatibility, security readiness, backup/restore, clean installation or multi-device operation. Those remain future acceptance work.

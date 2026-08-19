@@ -1,6 +1,6 @@
 # Personal Vault Fluid Capture Principle
 
-This document describes the end-to-end capture experience across Personal Vault Core and Personal Assistant. It does not assign domain interpretation to Core.
+This document describes the end-to-end capture experience across Personal Vault's Core layer and Personal Assistant. It does not assign domain interpretation to Core.
 
 - Core saves the exact raw capture and attachments, preserves provenance, and exposes generic retrieval and approved-mutation contracts.
 - Personal Assistant owns capture review, Health/Today/Planner/project interpretation, clarification questions, proposals and approval UI.

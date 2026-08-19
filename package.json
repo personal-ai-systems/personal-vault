@@ -1,14 +1,14 @@
 {
-  "name": "personal-vault-core",
+  "name": "personal-vault",
   "version": "0.1.0",
   "private": true,
   "description": "User-owned Markdown vault engine and MCP server.",
   "license": "FSL-1.1-ALv2",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/personal-ai-systems/personal-vault-core.git"
+    "url": "git+https://github.com/personal-ai-systems/personal-vault.git"
   },
-  "homepage": "https://github.com/personal-ai-systems/personal-vault-core#readme",
+  "homepage": "https://github.com/personal-ai-systems/personal-vault#readme",
   "type": "module",
   "engines": {
     "node": ">=24"

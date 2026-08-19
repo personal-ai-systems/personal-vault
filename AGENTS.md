@@ -1,10 +1,10 @@
-# Personal Vault Core Project Instructions
+# Personal Vault Project Instructions
 
 This file is the authoritative project brief for humans and coding agents working in this repository. Read it before planning or changing code.
 
 ## Mission
 
-Personal Vault Core is a neutral, user-owned knowledge and data product published under the Personal AI Systems project brand. It preserves information durably, keeps it human-readable where practical, records provenance and mutation history, and exposes stable generic interfaces to consumers.
+Personal Vault is a neutral, user-owned knowledge and data product published under the Personal AI Systems project brand. It preserves information durably, keeps it human-readable where practical, records provenance and mutation history, and exposes stable generic interfaces to consumers.
 
 Core is not a personal assistant, planner, health application, trading application, or project dashboard. Those products consume Core through versioned contracts.
 
@@ -16,15 +16,16 @@ The primary consumer is Personal Assistant:
 
 ## Repository and Workspace Map
 
-- Core repository: `personal-ai-systems/personal-vault-core` at <https://github.com/personal-ai-systems/personal-vault-core>;
-- Core local checkout: `/Users/kirill/development/personal/personal-vault-core`;
+- Repository: `personal-ai-systems/personal-vault` at <https://github.com/personal-ai-systems/personal-vault>;
+- Local checkout: `/Users/kirill/development/personal/personal-vault`;
 - Personal Assistant repository: `kir-au/personal-assistant` at <https://github.com/kir-au/personal-assistant>;
 - Personal Assistant local checkout during migration: `/Users/kirill/development/personal/personal-dashboard`;
 - separately provisioned live Vault: `/Users/kirill/personal-vault`;
 - durable development context: `docs/development-handoff.md`;
 - Gate 1 ownership and dependency inventory: `docs/ownership-matrix.md`.
+- Proposed Core v1 contract: `docs/core-contract-v1.md` and `contracts/v1/core-contract-v1.schema.json`.
 
-The Core repository moved from `kir-au/personal-vault-core` to the Personal AI Systems GitHub organization on 19 August 2026. Preserve repository history and use the organization URL for all new clones, documentation and automation. The Assistant repository has not yet been moved; do not assume that decision has been made.
+The repository moved from `kir-au/personal-vault-core` to the Personal AI Systems GitHub organization on 19 August 2026, then was renamed to `personal-ai-systems/personal-vault` with history preserved. The local checkout and configured LaunchAgent use the matching `personal-vault` path. The Assistant repository has not yet been moved; do not assume that decision has been made.
 
 ## Product Boundary
 
@@ -60,7 +61,8 @@ The Vault Browser is part of Core because Core must be useful to a non-technical
 ## Brand, Licence and Public Release Direction
 
 - `Personal AI Systems` is the umbrella project and publishing brand.
-- `Personal Vault` is the user-facing product name; `personal-vault-core` remains the technical repository/package name.
+- `Personal Vault` is the user-facing product, repository and package name: `personal-vault`.
+- `Core` names the neutral storage/API layer within Personal Vault; it is not a second product or repository name.
 - Kirill Frolov is the initial copyright holder and licensor unless ownership is formally assigned to a legal entity later.
 - The repository uses `FSL-1.1-ALv2`: source is visible and available for permitted purposes, competing commercial use is restricted, and each released version receives the Apache License 2.0 on the second anniversary of its publication.
 - This is Fair Source/source-available software, not OSI Open Source before the future licence takes effect.
@@ -98,7 +100,7 @@ Public contracts must not grow methods such as `log_health_workout`, `calculate_
 
 ## Current State — 19 August 2026
 
-- The repository is available at `personal-ai-systems/personal-vault-core`; `main` is the default branch.
+- The repository is available at `personal-ai-systems/personal-vault`; `main` is the default branch.
 - The GitHub organization display name is Personal AI Systems. `kir-au` is its active admin/owner. The organization was created using the business details entered by the owner for Consense Beauty.
 - The GitHub organization setting does not by itself transfer software copyright or licensing rights. Kirill Frolov remains the initial copyright holder and FSL licensor until a separate formal assignment is documented.
 - The live Vault remains at `/Users/kirill/personal-vault` and is not part of Git.
@@ -200,7 +202,7 @@ Exit evidence: reproducible package, tested documentation, release notes and sig
 ## Immediate Work Order
 
 1. Maintain the reviewed ownership matrix and transitional behavior inventory in `docs/ownership-matrix.md` as paths and tools change.
-2. Define Core contract v1 with stable IDs, generic record envelopes, assets, provenance, audit events and search results.
+2. Review the proposed Core v1 record, asset, provenance, audit, search, cursor and mutation contract; after approval, incompatible changes require a new contract version.
 3. Add contract tests that run against a temporary fixture Vault.
 4. Introduce Assistant-owned endpoints for Today plan, capture interpretation and approved domain updates.
 5. Migrate the mobile ChatGPT flow without changing the public connector URL.

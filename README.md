@@ -1,12 +1,12 @@
-# Personal Vault Core
+# Personal Vault
 
-Personal Vault Core is the portable, user-owned data and integration product for Personal Vault, a Personal AI Systems project.
+Personal Vault is the portable, user-owned data and integration product from Personal AI Systems. Its neutral storage/API layer is referred to internally as Core.
 
-Canonical repository: [`personal-ai-systems/personal-vault-core`](https://github.com/personal-ai-systems/personal-vault-core).
+Target canonical repository after the approved GitHub rename: [`personal-ai-systems/personal-vault`](https://github.com/personal-ai-systems/personal-vault).
 
 The authoritative product boundary and implementation roadmap are in [`AGENTS.md`](AGENTS.md). Read that file before changing the repository.
 
-The durable development context is in [`docs/development-handoff.md`](docs/development-handoff.md). The current Gate 1 path, MCP-tool and dependency classifications are in [`docs/ownership-matrix.md`](docs/ownership-matrix.md). Development is coordinated in the canonical Codex task: one approved roadmap step at a time, followed by verification and user review in that same task.
+The durable development context is in [`docs/development-handoff.md`](docs/development-handoff.md). The current Gate 1 path, MCP-tool and dependency classifications are in [`docs/ownership-matrix.md`](docs/ownership-matrix.md); the proposed generic interfaces are in [`docs/core-contract-v1.md`](docs/core-contract-v1.md). Development is coordinated in the canonical Codex task: one approved roadmap step at a time, followed by verification and user review in that same task.
 
 It owns the generic MCP server and writes only to a separately provisioned private Vault directory. The Vault directory contains the user's records, assets, indexes, imports and logs; none of those records belong in this repository.
 
