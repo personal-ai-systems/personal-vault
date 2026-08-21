@@ -418,6 +418,85 @@ test('verify detects a tampered asset payload inside an export file', async (t) 
   assert.ok(verification.issues.some((issue) => issue.includes('payload hash mismatch')));
 });
 
+test('backup encrypts and restore round-trips records assets and audit into a fresh vault', async (t) => {
+  const source = await fixtureRuntime(t);
+  const created = (await source.runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await source.runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+  const backup = await source.runtime.backupVault('correct-horse-battery');
+  assert.equal(backup.backupFormat, 'personal-vault-backup/v1');
+  assert.equal(backup.manifest.recordCount, 1);
+  assert.equal(backup.manifest.assetCount, 1);
+  assert.equal(backup.manifest.auditCount, 2);
+  const raw = await readFile(backup.path, 'utf8');
+  assert.ok(!raw.includes('hello asset'), 'backup file must not contain plaintext payloads');
+  assert.ok(!raw.includes('# Fixture'), 'backup file must not contain plaintext record text');
+
+  const target = await fixtureRuntime(t);
+  const restored = await target.runtime.restoreVault(backup.path, 'correct-horse-battery');
+  assert.deepEqual(restored, {
+    contractVersion: 'personal-vault/v1',
+    restoredAt: restored.restoredAt,
+    recordsRestored: 1,
+    assetsRestored: 1,
+    auditRestored: 2,
+    skipped: 0,
+  });
+  const integrity = await target.runtime.checkIntegrity();
+  assert.equal(integrity.ok, true, JSON.stringify(integrity.issues));
+  const records = await target.runtime.listRecords();
+  assert.equal(records.length, 1);
+  assert.deepEqual(records[0].content, created.content);
+});
+
+test('backup restore rejects a wrong passphrase', async (t) => {
+  const source = await fixtureRuntime(t);
+  await source.runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }));
+  const backup = await source.runtime.backupVault('correct-horse-battery');
+  await assert.rejects(
+    source.runtime.restoreVault(backup.path, 'wrong-passphrase'),
+    /auth|unable to authenticate|bad decrypt/i,
+  );
+});
+
+test('backup restore rejects a tampered encrypted payload', async (t) => {
+  const source = await fixtureRuntime(t);
+  await source.runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }));
+  const backup = await source.runtime.backupVault('correct-horse-battery');
+  const backupObject = JSON.parse(await readFile(backup.path, 'utf8'));
+  const bytes = Buffer.from(backupObject.encryptedDataBase64, 'base64');
+  bytes[0] ^= 0xff;
+  backupObject.encryptedDataBase64 = bytes.toString('base64');
+  await writeFile(backup.path, `${JSON.stringify(backupObject)}\n`, 'utf8');
+  await assert.rejects(source.runtime.restoreVault(backup.path, 'correct-horse-battery'), /auth|unable to authenticate|bad decrypt/i);
+});
+
+test('backup restore is non-destructive and skips existing records and audit', async (t) => {
+  const source = await fixtureRuntime(t);
+  const created = (await source.runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const backup = await source.runtime.backupVault('correct-horse-battery');
+  const revisedText = '# Revised after backup\nNewer content.';
+  const replacement = {
+    ...created,
+    revision: 2,
+    updatedAt: new Date().toISOString(),
+    title: 'Newer',
+    content: { ...created.content, text: revisedText, hash: hash(revisedText) },
+  };
+  await source.runtime.applyMutation(mutation({ type: 'record.revise', recordId: created.recordId, baseRevision: 1, record: replacement }, { id: 'B' }));
+
+  const restored = await source.runtime.restoreVault(backup.path, 'correct-horse-battery');
+  assert.equal(restored.recordsRestored, 0);
+  assert.equal(restored.assetsRestored, 0);
+  assert.equal(restored.auditRestored, 0);
+  assert.equal(restored.skipped, 2);
+
+  const current = await source.runtime.readRecord(created.recordId);
+  assert.equal(current.revision, 2, 'existing record must not be overwritten');
+  assert.equal(current.content.text, revisedText);
+  const integrity = await source.runtime.checkIntegrity();
+  assert.equal(integrity.ok, true, JSON.stringify(integrity.issues));
+});
+
 test('audit failure restores the previous revision of an existing record', async (t) => {
   const { root, runtime } = await fixtureRuntime(t);
   const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;

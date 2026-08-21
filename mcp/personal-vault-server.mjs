@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile, appendFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -26,6 +27,7 @@ const ASSETS_ROOT = path.join(STORE_ROOT, 'assets');
 const ASSETS_META_ROOT = path.join(ASSETS_ROOT, 'meta');
 const ASSETS_PAYLOAD_ROOT = path.join(ASSETS_ROOT, 'payloads');
 const EXPORTS_ROOT = path.join(VAULT_ROOT, 'exports');
+const BACKUPS_ROOT = path.join(VAULT_ROOT, 'backups');
 
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const RECORD_ID_PATTERN = /^pvr_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -61,6 +63,7 @@ const assetOperationSchema = z.object({ type: z.literal('asset.attach'), recordI
 const mutationSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), mutationId: z.string().regex(/^pvm_[0-9A-HJKMNP-TV-Z]{26}$/), requestedAt: z.string().datetime(), requestedBy: actorSchema, idempotencyKey: z.string().min(16).max(256), approval: approvalSchema, operation: z.union([createOperationSchema, reviseOperationSchema, assetOperationSchema, lifecycleOperationSchema]), provenance: provenanceSchema }).strict();
 
 const CROCKFORD_BASE32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const SCRIPT = promisify(scryptCallback);
 
 function encodeTime(value) {
   let remaining = value;
@@ -493,6 +496,136 @@ async function verifyExport(filePath) {
   };
 }
 
+const BACKUP_KDF = { algorithm: 'scrypt', N: 16384, r: 8, p: 1, keyLength: 32 };
+const BACKUP_CIPHER = { algorithm: 'aes-256-gcm' };
+
+async function deriveBackupKey(passphrase, salt) {
+  return SCRIPT(passphrase, salt, BACKUP_KDF.keyLength, { N: BACKUP_KDF.N, r: BACKUP_KDF.r, p: BACKUP_KDF.p });
+}
+
+async function backupVault(passphrase) {
+  if (typeof passphrase !== 'string' || passphrase.length < 8) throw new Error('Backup passphrase must be at least 8 characters.');
+  const exportObject = await exportVault({ includeAssets: true });
+  const payload = JSON.stringify({
+    manifest: exportObject.manifest,
+    records: exportObject.records,
+    assets: exportObject.assets,
+    audit: exportObject.audit,
+  });
+  const salt = randomBytes(16);
+  const key = await deriveBackupKey(passphrase, salt);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(BACKUP_CIPHER.algorithm, key, iv);
+  const encrypted = Buffer.concat([cipher.update(payload, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  const createdAt = new Date().toISOString();
+  const backupObject = {
+    contractVersion: CONTRACT_VERSION,
+    backupFormat: 'personal-vault-backup/v1',
+    createdAt,
+    manifest: exportObject.manifest,
+    kdf: { algorithm: BACKUP_KDF.algorithm, salt: salt.toString('base64'), N: BACKUP_KDF.N, r: BACKUP_KDF.r, p: BACKUP_KDF.p, keyLength: BACKUP_KDF.keyLength },
+    cipher: { algorithm: BACKUP_CIPHER.algorithm, iv: iv.toString('base64'), authTag: authTag.toString('base64') },
+    encryptedDataBase64: encrypted.toString('base64'),
+  };
+  await mkdir(BACKUPS_ROOT, { recursive: true });
+  const backupPath = path.join(BACKUPS_ROOT, `backup-${createdAt.replace(/[:.]/g, '-')}.json`);
+  await writeFile(backupPath, `${JSON.stringify(backupObject, null, 2)}\n`, 'utf8');
+  return { path: backupPath, contractVersion: backupObject.contractVersion, backupFormat: backupObject.backupFormat, createdAt, manifest: backupObject.manifest };
+}
+
+async function decryptBackup(filePath, passphrase) {
+  const backupObject = JSON.parse(await readFile(filePath, 'utf8'));
+  if (backupObject.contractVersion !== CONTRACT_VERSION) throw new Error('Backup contractVersion mismatch.');
+  if (backupObject.backupFormat !== 'personal-vault-backup/v1') throw new Error('Backup format mismatch.');
+  if (typeof passphrase !== 'string' || passphrase.length < 8) throw new Error('Backup passphrase must be at least 8 characters.');
+  const key = await deriveBackupKey(passphrase, Buffer.from(backupObject.kdf.salt, 'base64'));
+  const decipher = createDecipheriv(BACKUP_CIPHER.algorithm, key, Buffer.from(backupObject.cipher.iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(backupObject.cipher.authTag, 'base64'));
+  const decrypted = Buffer.concat([decipher.update(Buffer.from(backupObject.encryptedDataBase64, 'base64')), decipher.final()]);
+  const data = JSON.parse(decrypted.toString('utf8'));
+  const manifest = JSON.stringify(data.manifest) === JSON.stringify(backupObject.manifest)
+    ? data.manifest
+    : (() => { throw new Error('Backup manifest does not match encrypted payload.'); })();
+  return { backupObject, data, manifest };
+}
+
+async function restoreVault(filePath, passphrase) {
+  const { data } = await decryptBackup(filePath, passphrase);
+  const issues = [];
+  const records = Array.isArray(data.records) ? data.records : [];
+  const assets = Array.isArray(data.assets) ? data.assets : [];
+  const audit = Array.isArray(data.audit) ? data.audit : [];
+  const assetsManifest = assets.map(({ payloadBase64, ...meta }) => meta);
+  if (data.manifest?.recordsHash !== canonicalHash(records)) issues.push('records hash mismatch');
+  if (data.manifest?.assetsHash !== canonicalHash(assetsManifest)) issues.push('assets hash mismatch');
+  if (data.manifest?.auditHash !== canonicalHash(audit)) issues.push('audit hash mismatch');
+  if (issues.length) throw new Error(`Backup integrity failed: ${issues.join('; ')}`);
+  await ensureStore();
+
+  let recordsRestored = 0;
+  let assetsRestored = 0;
+  let auditRestored = 0;
+  let skipped = 0;
+
+  for (const record of records) {
+    let exists = true;
+    try {
+      await readRecord(record.recordId);
+    } catch (error) {
+      if (error.code === 'ENOENT') exists = false;
+      else { skipped += 1; continue; }
+    }
+    if (exists) {
+      skipped += 1;
+      continue;
+    }
+    await writeRecord(record);
+    recordsRestored += 1;
+  }
+
+  for (const asset of assets) {
+    const { payloadBase64, ...meta } = asset;
+    let exists = true;
+    try {
+      await readAsset(asset.assetId);
+    } catch (error) {
+      if (error.code === 'ENOENT') exists = false;
+      else { skipped += 1; continue; }
+    }
+    if (exists) {
+      skipped += 1;
+      continue;
+    }
+    await writeAssetMeta(meta);
+    const payloadPath = assetPayloadPath(asset.contentHash);
+    await mkdir(path.dirname(payloadPath), { recursive: true });
+    await writeFile(payloadPath, Buffer.from(payloadBase64, 'base64'));
+    assetsRestored += 1;
+  }
+
+  const existingEvents = await readAuditEvents();
+  const lastSequence = existingEvents.length ? existingEvents.at(-1).sequence : 0;
+  const existingIds = new Set(existingEvents.map((event) => event.eventId));
+  for (const event of [...audit].sort((a, b) => a.sequence - b.sequence)) {
+    if (existingIds.has(event.eventId) || event.sequence <= lastSequence) {
+      skipped += 1;
+      continue;
+    }
+    await appendFile(AUDIT_PATH, `${JSON.stringify(event)}\n`, 'utf8');
+    auditRestored += 1;
+  }
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    restoredAt: new Date().toISOString(),
+    recordsRestored,
+    assetsRestored,
+    auditRestored,
+    skipped,
+  };
+}
+
 async function checkIntegrity() {
   const issues = [];
   let records = [];
@@ -638,6 +771,14 @@ function createMcpServer() {
     const result = await verifyExport(exportPath);
     return { content: [{ type: 'text', text: result.ok ? `Export verified: ${exportPath}` : `Export issues: ${result.issues.length}` }], structuredContent: result };
   }));
+  server.registerTool('vault.backup.create', { title: 'Create backup', description: 'Create an encrypted backup of records, assets and audit events protected with a passphrase-derived AES-256-GCM key.', inputSchema: { passphrase: z.string().min(8).max(1024) } }, withAuth(async ({ passphrase }) => {
+    const result = await backupVault(passphrase);
+    return { content: [{ type: 'text', text: `Encrypted backup written to ${result.path}.` }], structuredContent: result };
+  }));
+  server.registerTool('vault.backup.restore', { title: 'Restore backup', description: 'Non-destructively restore records, assets and audit events from an encrypted backup file using the passphrase.', inputSchema: { path: z.string().min(1), passphrase: z.string().min(8).max(1024) } }, withAuth(async ({ path: backupPath, passphrase }) => {
+    const result = await restoreVault(backupPath, passphrase);
+    return { content: [{ type: 'text', text: `Restored ${result.recordsRestored} record(s), ${result.assetsRestored} asset(s), ${result.auditRestored} audit event(s); skipped ${result.skipped}.` }], structuredContent: result };
+  }));
   return server;
 }
 
@@ -673,8 +814,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
 
 export {
   applyMutation,
+  backupVault,
   checkIntegrity,
   contentSchema,
+  decryptBackup,
   exportVault,
   fromMarkdown,
   listAssets,
@@ -687,6 +830,7 @@ export {
   recoverPendingMutations,
   recordDraftSchema,
   recordSchema,
+  restoreVault,
   searchRecords,
   sha256,
   toMarkdown,
