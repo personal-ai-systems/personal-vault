@@ -498,3 +498,60 @@ test('audit failure rolls back the staged record write', async (t) => {
   assert.deepEqual(files.audit, []);
   assert.deepEqual(files.idempotency, {});
 });
+
+test('integrity check reports ok on a clean vault with records and assets', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+
+  const result = await runtime.checkIntegrity();
+  assert.equal(result.contractVersion, 'personal-vault/v1');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.recordCount, 1);
+  assert.equal(result.assetCount, 1);
+  assert.equal(result.auditCount, 2);
+});
+
+test('integrity check detects a tampered record body', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const recordFile = path.join(root, '.personal-vault', 'records', `${created.recordId}.md`);
+  const markdown = await readFile(recordFile, 'utf8');
+  await writeFile(recordFile, markdown.replace('# Fixture', '# Tampered'), 'utf8');
+
+  const result = await runtime.checkIntegrity();
+  assert.equal(result.ok, false);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0], /record pvr_/);
+  assert.match(result.issues[0], /content hash/);
+});
+
+test('integrity check detects a missing asset payload', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('hello asset');
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1, bytes }), { id: 'B' }));
+  const payloadPath = path.join(root, '.personal-vault', 'assets', 'payloads', `${createHash('sha256').update(bytes).digest('hex')}.bin`);
+  await rm(payloadPath, { force: true });
+
+  const result = await runtime.checkIntegrity();
+  assert.equal(result.ok, false);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0], /asset pva_/);
+  assert.match(result.issues[0], /payload missing/);
+});
+
+test('integrity check detects non-monotonic audit sequences', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }));
+  const auditPath = path.join(root, '.personal-vault', 'audit', 'events.jsonl');
+  const events = (await readFile(auditPath, 'utf8')).split('\n').filter(Boolean).map(JSON.parse);
+  const duplicated = JSON.parse(JSON.stringify(events[0]));
+  await writeFile(auditPath, `${JSON.stringify(events[0])}\n${JSON.stringify({ ...duplicated, eventId: `pve_${'D'.repeat(26)}`, mutationId: `pvm_${'D'.repeat(26)}` })}\n`, 'utf8');
+
+  const result = await runtime.checkIntegrity();
+  assert.equal(result.ok, false);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0], /non-monotonic sequence/);
+});

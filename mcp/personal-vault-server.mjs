@@ -413,6 +413,76 @@ async function listChanges(cursor = 'v1:0', limit = 50) {
   return { contractVersion: CONTRACT_VERSION, events, nextCursor, hasMore: remaining.length > events.length };
 }
 
+async function listAssets() {
+  await ensureStore();
+  const entries = await readdir(ASSETS_META_ROOT, { withFileTypes: true });
+  return Promise.all(entries.filter((entry) => entry.isFile() && entry.name.endsWith('.json')).map((entry) => readAsset(entry.name.slice(0, -5))));
+}
+
+async function checkIntegrity() {
+  const issues = [];
+  let records = [];
+  let assets = [];
+  let audit = [];
+
+  try {
+    records = await listRecords();
+  } catch (error) {
+    issues.push(`records: ${error.message}`);
+  }
+  for (const record of records) {
+    try {
+      assertContentIntegrity(record.content);
+    } catch (error) {
+      issues.push(`record ${record.recordId}: ${error.message}`);
+    }
+  }
+
+  try {
+    assets = await listAssets();
+  } catch (error) {
+    issues.push(`assets: ${error.message}`);
+  }
+  for (const asset of assets) {
+    try {
+      const payload = await readFile(assetPayloadPath(asset.contentHash));
+      if (asset.byteLength !== payload.length) issues.push(`asset ${asset.assetId}: stored byteLength does not match payload`);
+      if (asset.contentHash !== `sha256:${sha256(payload)}`) issues.push(`asset ${asset.assetId}: payload hash mismatch`);
+    } catch (error) {
+      issues.push(`asset ${asset.assetId}: payload missing or unreadable (${error?.code || error.message})`);
+    }
+  }
+
+  try {
+    audit = await readAuditEvents();
+  } catch (error) {
+    issues.push(`audit: ${error.message}`);
+  }
+  let previousSequence = 0;
+  for (const event of audit) {
+    if (!Number.isSafeInteger(event.sequence) || event.sequence <= previousSequence) {
+      issues.push(`audit ${event.eventId}: non-monotonic sequence ${event.sequence}`);
+    }
+    previousSequence = event.sequence;
+  }
+
+  try {
+    await readIdempotencyIndex();
+  } catch (error) {
+    issues.push(`idempotency index: ${error.message}`);
+  }
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    checkedAt: new Date().toISOString(),
+    recordCount: records.length,
+    assetCount: assets.length,
+    auditCount: audit.length,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
 function getHeader(headers, name) {
   const value = headers[name];
   return Array.isArray(value) ? value[0] : value;
@@ -482,6 +552,10 @@ function createMcpServer() {
     const changeFeed = await listChanges(cursor, limit);
     return { content: [{ type: 'text', text: `Returned ${changeFeed.events.length} change event(s).` }], structuredContent: changeFeed };
   }));
+  server.registerTool('vault.integrity.check', { title: 'Check integrity', description: 'Verify record content hashes, asset payloads, audit sequence ordering and index readability without modifying the store.', inputSchema: {} }, withAuth(async () => {
+    const result = await checkIntegrity();
+    return { content: [{ type: 'text', text: result.ok ? `Integrity ok (${result.recordCount} record(s), ${result.assetCount} asset(s), ${result.auditCount} audit event(s)).` : `Integrity issues: ${result.issues.length}` }], structuredContent: result };
+  }));
   return server;
 }
 
@@ -517,8 +591,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
 
 export {
   applyMutation,
+  checkIntegrity,
   contentSchema,
   fromMarkdown,
+  listAssets,
   listChanges,
   listRecords,
   mutationSchema,
