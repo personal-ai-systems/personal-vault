@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { scanSecrets } from './scripts/scan-secrets.mjs';
 
 const SERVER_PATH = path.resolve('mcp/personal-vault-server.mjs');
 const ACTOR = { kind: 'user', id: 'kirill', displayName: 'Kirill' };
@@ -528,6 +529,25 @@ test('rebuild restores a deleted search index and search still works', async (t)
   assert.equal(rebuilt.length, 1);
   assert.equal(rebuilt[0].recordId, created.recordId);
   assert.equal((await runtime.searchRecords('needle', 10)).length, 1, 'search uses rebuilt index');
+});
+
+test('secret scan finds nothing in a clean fixture tree', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'secret-scan-clean-'));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, 'notes.md'), 'Just some ordinary text without secrets.', 'utf8');
+  await writeFile(path.join(root, 'config.example.json'), JSON.stringify({ apiKey: 'your-api-key-here', password: '<placeholder>' }), 'utf8');
+  const findings = await scanSecrets({ root, history: false });
+  assert.deepEqual(findings, []);
+});
+
+test('secret scan detects api keys and private keys in a fixture tree', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'secret-scan-dirty-'));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, 'leak.env'), 'OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456\nPASSWORD=mySup3rSecretValue123\n', 'utf8');
+  await writeFile(path.join(root, 'id_rsa'), '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----\n', 'utf8');
+  const findings = await scanSecrets({ root, history: false });
+  const rules = findings.map((finding) => finding.rule).sort();
+  assert.deepEqual(rules, ['generic-assignment', 'openai-api-key', 'private-key']);
 });
 
 test('audit failure restores the previous revision of an existing record', async (t) => {

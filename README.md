@@ -104,6 +104,8 @@ curl http://127.0.0.1:8787/status
 node --check mcp/personal-vault-server.mjs
 npm ls --depth=0
 npm test
+npm run scan:secrets        # scan working tree for potential secrets
+npm run scan:secrets:history # scan full git history for potential secrets
 ```
 
 Use temporary redacted fixtures for every test. Public interfaces must remain generic, versioned and independently testable.
