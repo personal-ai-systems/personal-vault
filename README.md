@@ -9,11 +9,12 @@ Personal Vault is a local-first storage engine for user-owned records, readable 
 
 - generic record creation, retrieval and search;
 - approved, auditable record mutations;
+- content-addressed binary asset attachment with readable metadata;
 - readable record representation and provenance;
 - authenticated Streamable HTTP MCP transport;
 - a versioned public contract: `personal-vault/v1` and `vault.*`.
 
-Asset attachment, export, backup, restore and synchronization are specified or planned work; they are not implemented by the current server.
+Export, backup, restore and synchronization are specified or planned work; they are not implemented by the current server.
 
 Personal Vault stores information but does not interpret it. Application-specific meaning, recommendations, planning and model behavior are outside this repository.
 
@@ -66,6 +67,7 @@ curl http://127.0.0.1:8787/status
 | Operation | Purpose |
 | --- | --- |
 | `vault.records.create` | Create a generic record from an approved mutation. |
+| `vault.assets.attach` | Attach a content-addressed asset to a record. |
 | `vault.records.get` | Read a record by stable ID. |
 | `vault.records.search` | Search record title and content. |
 | `vault.changes.list` | Read audit events after a cursor. |
@@ -94,6 +96,7 @@ curl http://127.0.0.1:8787/status
 ```sh
 node --check mcp/personal-vault-server.mjs
 npm ls --depth=0
+npm test
 ```
 
 Use temporary redacted fixtures for every test. Public interfaces must remain generic, versioned and independently testable.
