@@ -22,9 +22,14 @@ const RECORDS_ROOT = path.join(STORE_ROOT, 'records');
 const AUDIT_PATH = path.join(STORE_ROOT, 'audit', 'events.jsonl');
 const IDEMPOTENCY_PATH = path.join(STORE_ROOT, 'indexes', 'idempotency.json');
 const JOURNAL_PATH = path.join(STORE_ROOT, 'indexes', 'pending.jsonl');
+const ASSETS_ROOT = path.join(STORE_ROOT, 'assets');
+const ASSETS_META_ROOT = path.join(ASSETS_ROOT, 'meta');
+const ASSETS_PAYLOAD_ROOT = path.join(ASSETS_ROOT, 'payloads');
 
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const RECORD_ID_PATTERN = /^pvr_[0-9A-HJKMNP-TV-Z]{26}$/;
+const ASSET_ID_PATTERN = /^pva_[0-9A-HJKMNP-TV-Z]{26}$/;
+const MEDIA_TYPE_PATTERN = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:;.*)?$/;
 const actorSchema = z.object({ kind: z.enum(['user', 'application', 'service', 'migration', 'recovery']), id: z.string().min(1).max(256), displayName: z.string().min(1).max(256).optional() }).strict();
 const processorSchema = z.object({ id: z.string().regex(/^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$/), version: z.string().min(1).max(128), configurationHash: z.string().regex(SHA256_PATTERN).optional() }).strict();
 const provenanceSchema = z.object({
@@ -41,14 +46,18 @@ const provenanceSchema = z.object({
 const approvalSchema = z.object({ kind: z.enum(['user', 'migration', 'recovery']), approvedAt: z.string().datetime(), approvedBy: actorSchema, evidenceRef: z.string().min(1).max(4096), expiresAt: z.string().datetime().optional() }).strict();
 const privacySchema = z.enum(['private', 'restricted', 'shared', 'public']);
 const contentSchema = z.object({ format: z.enum(['markdown', 'plain-text']), text: z.string(), hash: z.string().regex(SHA256_PATTERN), language: z.string().regex(/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})*$/).optional() }).strict();
-const assetReferenceSchema = z.object({ assetId: z.string().regex(/^pva_[0-9A-HJKMNP-TV-Z]{26}$/), role: z.enum(['attachment', 'preview', 'source', 'derived']), caption: z.string().max(4096).optional() }).strict();
+const assetReferenceSchema = z.object({ assetId: z.string().regex(ASSET_ID_PATTERN), role: z.enum(['attachment', 'preview', 'source', 'derived']), caption: z.string().max(4096).optional() }).strict();
+const assetReferenceDraftSchema = z.object({ role: z.enum(['attachment', 'preview', 'source', 'derived']), caption: z.string().max(4096).optional() }).strict();
 const metadataSchema = z.record(z.string(), z.unknown());
+const assetDraftSchema = z.object({ privacy: privacySchema, mediaType: z.string().regex(MEDIA_TYPE_PATTERN), byteLength: z.number().int().min(0), contentHash: z.string().regex(SHA256_PATTERN), originalName: z.string().max(1024).optional(), provenance: provenanceSchema, metadata: metadataSchema.optional() }).strict();
+const assetPayloadSchema = z.object({ encoding: z.literal('base64'), dataBase64: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict();
 const recordDraftSchema = z.object({ privacy: privacySchema, title: z.string().min(1).max(1024).optional(), content: contentSchema, provenance: provenanceSchema, metadata: metadataSchema, assetRefs: z.array(assetReferenceSchema).optional().default([]) }).strict();
 const recordSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), recordId: z.string().regex(RECORD_ID_PATTERN), revision: z.number().int().min(1), state: z.enum(['active', 'archived', 'trashed']), createdAt: z.string().datetime(), updatedAt: z.string().datetime(), createdBy: actorSchema, privacy: privacySchema, title: z.string().min(1).max(1024).optional(), content: contentSchema, provenance: provenanceSchema, assetRefs: z.array(assetReferenceSchema), metadata: metadataSchema }).strict();
 const createOperationSchema = z.object({ type: z.literal('record.create'), record: recordDraftSchema }).strict();
 const reviseOperationSchema = z.object({ type: z.literal('record.revise'), recordId: z.string().regex(RECORD_ID_PATTERN), baseRevision: z.number().int().min(1), record: recordSchema }).strict();
 const lifecycleOperationSchema = z.object({ type: z.enum(['record.archive', 'record.restore', 'record.trash']), recordId: z.string().regex(RECORD_ID_PATTERN), baseRevision: z.number().int().min(1), reason: z.string().max(4096).optional() }).strict();
-const mutationSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), mutationId: z.string().regex(/^pvm_[0-9A-HJKMNP-TV-Z]{26}$/), requestedAt: z.string().datetime(), requestedBy: actorSchema, idempotencyKey: z.string().min(16).max(256), approval: approvalSchema, operation: z.union([createOperationSchema, reviseOperationSchema, lifecycleOperationSchema]), provenance: provenanceSchema }).strict();
+const assetOperationSchema = z.object({ type: z.literal('asset.attach'), recordId: z.string().regex(RECORD_ID_PATTERN), baseRevision: z.number().int().min(1), asset: assetDraftSchema, reference: assetReferenceDraftSchema.optional(), payload: assetPayloadSchema }).strict();
+const mutationSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), mutationId: z.string().regex(/^pvm_[0-9A-HJKMNP-TV-Z]{26}$/), requestedAt: z.string().datetime(), requestedBy: actorSchema, idempotencyKey: z.string().min(16).max(256), approval: approvalSchema, operation: z.union([createOperationSchema, reviseOperationSchema, assetOperationSchema, lifecycleOperationSchema]), provenance: provenanceSchema }).strict();
 
 const CROCKFORD_BASE32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -77,6 +86,30 @@ function recordPath(recordId) {
   return path.join(RECORDS_ROOT, `${recordId}.md`);
 }
 
+function assetMetaPath(assetId) {
+  if (!ASSET_ID_PATTERN.test(assetId)) throw new Error('Invalid assetId.');
+  return path.join(ASSETS_META_ROOT, `${assetId}.json`);
+}
+
+function assetPayloadPath(contentHash) {
+  const match = contentHash.match(/^sha256:([a-f0-9]{64})$/);
+  if (!match) throw new Error('Invalid contentHash.');
+  return path.join(ASSETS_PAYLOAD_ROOT, `${match[1]}.bin`);
+}
+
+async function fileExists(filePath) {
+  return readFile(filePath).then(() => true).catch((error) => error.code === 'ENOENT' ? false : Promise.reject(error));
+}
+
+async function writeAssetMeta(asset) {
+  await ensureStore();
+  await writeFile(assetMetaPath(asset.assetId), `${JSON.stringify(asset, null, 2)}\n`, 'utf8');
+}
+
+async function readAsset(assetId) {
+  return JSON.parse(await readFile(assetMetaPath(assetId), 'utf8'));
+}
+
 function toMarkdown(record) {
   const { content, ...recordHeader } = record;
   const { text, ...contentHeader } = content;
@@ -92,7 +125,7 @@ function fromMarkdown(markdown) {
 }
 
 async function ensureStore() {
-  await Promise.all([mkdir(RECORDS_ROOT, { recursive: true }), mkdir(path.dirname(AUDIT_PATH), { recursive: true }), mkdir(path.dirname(IDEMPOTENCY_PATH), { recursive: true })]);
+  await Promise.all([mkdir(RECORDS_ROOT, { recursive: true }), mkdir(path.dirname(AUDIT_PATH), { recursive: true }), mkdir(path.dirname(IDEMPOTENCY_PATH), { recursive: true }), mkdir(ASSETS_META_ROOT, { recursive: true }), mkdir(ASSETS_PAYLOAD_ROOT, { recursive: true })]);
 }
 
 async function readRecord(recordId) {
@@ -153,13 +186,16 @@ async function recoverPendingMutations() {
     const auditEvent = auditEvents.find((event) => event.mutationId === entry.mutationId);
     if (auditEvent) {
       const record = await readRecord(entry.recordId);
-      idempotency[entry.idempotencyKey] = {
-        fingerprint: entry.fingerprint,
-        result: { record, auditEvent, replayed: false },
-      };
+      const result = { record, auditEvent, replayed: false };
+      if (entry.operationType === 'asset.attach' && entry.assetId) result.asset = await readAsset(entry.assetId);
+      idempotency[entry.idempotencyKey] = { fingerprint: entry.fingerprint, result };
       committed += 1;
     } else if (entry.previousRecord) {
       await writeRecord(entry.previousRecord);
+      if (entry.operationType === 'asset.attach') {
+        if (entry.assetMetaPath) await rm(entry.assetMetaPath, { force: true });
+        if (entry.assetPayloadPath && !entry.assetPayloadExisted) await rm(entry.assetPayloadPath, { force: true });
+      }
       rolledBack += 1;
     } else {
       await rm(recordPath(entry.recordId), { force: true });
@@ -178,11 +214,14 @@ const AUDIT_ACTIONS = {
   'record.archive': 'record.archived',
   'record.restore': 'record.restored',
   'record.trash': 'record.trashed',
+  'asset.attach': 'asset.attached',
 };
 
-async function appendAudit({ mutation, record }) {
+async function appendAudit({ mutation, record, asset }) {
   const existingEvents = await readAuditEvents();
   const previousSequence = existingEvents.length ? existingEvents.at(-1).sequence : 0;
+  const resource = { recordId: record.recordId, revision: record.revision };
+  if (asset) resource.assetId = asset.assetId;
   const event = {
     contractVersion: CONTRACT_VERSION,
     eventId: makeId('pve'),
@@ -191,7 +230,7 @@ async function appendAudit({ mutation, record }) {
     mutationId: mutation.mutationId,
     action: AUDIT_ACTIONS[mutation.operation.type],
     actor: mutation.requestedBy,
-    resource: { recordId: record.recordId, revision: record.revision },
+    resource,
     provenance: mutation.provenance,
   };
   await appendFile(AUDIT_PATH, `${JSON.stringify(event)}\n`, 'utf8');
@@ -227,6 +266,9 @@ async function applyMutation(input) {
   const now = new Date().toISOString();
   let record;
   let previousRecord = null;
+  let assetRecord = null;
+  let assetFiles = null;
+  let payloadBuffer = null;
   const operation = mutation.operation;
   if (operation.type === 'record.create') {
     const draft = recordDraftSchema.parse(operation.record);
@@ -247,6 +289,36 @@ async function applyMutation(input) {
       assetRefs: draft.assetRefs,
       metadata: draft.metadata,
     };
+  } else if (operation.type === 'asset.attach') {
+    const assetDraft = assetDraftSchema.parse(operation.asset);
+    const payload = assetPayloadSchema.parse(operation.payload);
+    payloadBuffer = Buffer.from(payload.dataBase64, 'base64');
+    if (assetDraft.contentHash !== `sha256:${sha256(payloadBuffer)}`) throw new Error('Asset content hash does not match payload.');
+    if (assetDraft.byteLength !== payloadBuffer.length) throw new Error('Asset byteLength does not match payload.');
+    record = await readRecord(operation.recordId);
+    previousRecord = record;
+    if (operation.baseRevision !== record.revision) throw new Error('Record revision conflict.');
+    const assetId = makeId('pva');
+    assetRecord = {
+      contractVersion: CONTRACT_VERSION,
+      assetId,
+      createdAt: now,
+      createdBy: mutation.requestedBy,
+      privacy: assetDraft.privacy,
+      mediaType: assetDraft.mediaType,
+      byteLength: assetDraft.byteLength,
+      contentHash: assetDraft.contentHash,
+      ...(assetDraft.originalName !== undefined ? { originalName: assetDraft.originalName } : {}),
+      provenance: assetDraft.provenance,
+      ...(assetDraft.metadata !== undefined ? { metadata: assetDraft.metadata } : {}),
+    };
+    const referenceDraft = assetReferenceDraftSchema.parse(operation.reference ?? { role: 'attachment' });
+    const reference = { assetId, role: referenceDraft.role, ...(referenceDraft.caption !== undefined ? { caption: referenceDraft.caption } : {}) };
+    const metaPath = assetMetaPath(assetId);
+    const payloadPath = assetPayloadPath(assetDraft.contentHash);
+    const payloadExisted = await fileExists(payloadPath);
+    assetFiles = { metaPath, payloadPath, payloadExisted };
+    record = { ...record, revision: record.revision + 1, updatedAt: now, assetRefs: [...record.assetRefs, reference] };
   } else {
     const recordId = z.string().min(1).parse(operation.recordId);
     record = await readRecord(recordId);
@@ -280,23 +352,36 @@ async function applyMutation(input) {
     operationType: operation.type,
     recordId: record.recordId,
     previousRecord,
+    assetId: assetRecord?.assetId,
+    assetMetaPath: assetFiles?.metaPath,
+    assetPayloadPath: assetFiles?.payloadPath,
+    assetPayloadExisted: assetFiles?.payloadExisted,
   };
   await appendJournal(journalEntry);
+  if (assetRecord) {
+    await writeAssetMeta(assetRecord);
+    await mkdir(path.dirname(assetFiles.payloadPath), { recursive: true });
+    await writeFile(assetFiles.payloadPath, payloadBuffer);
+  }
   await writeRecord(record);
   let auditEvent;
   try {
-    auditEvent = await appendAudit({ mutation, record });
+    auditEvent = await appendAudit({ mutation, record, asset: assetRecord });
   } catch (auditError) {
     try {
       if (previousRecord) await writeRecord(previousRecord);
       else await rm(recordPath(record.recordId), { force: true });
+      if (assetFiles) {
+        await rm(assetFiles.metaPath, { force: true });
+        if (!assetFiles.payloadExisted) await rm(assetFiles.payloadPath, { force: true });
+      }
       await removeJournalEntry(journalEntry);
     } catch (rollbackError) {
       throw new AggregateError([auditError, rollbackError], 'Audit append failed and record rollback also failed.');
     }
     throw auditError;
   }
-  const result = { record, auditEvent, replayed: false };
+  const result = { record, auditEvent, ...(assetRecord ? { asset: assetRecord } : {}), replayed: false };
   idempotency[mutation.idempotencyKey] = { fingerprint, result };
   await writeFile(IDEMPOTENCY_PATH, `${JSON.stringify(idempotency, null, 2)}\n`, 'utf8');
   await removeJournalEntry(journalEntry);
@@ -375,6 +460,11 @@ function createMcpServer() {
     const result = await applyMutation(mutation);
     return { content: [{ type: 'text', text: `Applied ${result.auditEvent.action} to ${result.record.recordId}.` }], structuredContent: result };
   }));
+  server.registerTool('vault.assets.attach', { title: 'Attach asset', description: 'Attach a content-addressed asset to a record from an approved asset.attach mutation.', inputSchema: { mutation: z.unknown() } }, withAuth(async ({ mutation }) => {
+    const result = await applyMutation(mutation);
+    if (result.auditEvent.action !== 'asset.attached') throw new Error('vault.assets.attach accepts only asset.attach mutations.');
+    return { content: [{ type: 'text', text: `Attached asset ${result.asset.assetId} to ${result.record.recordId}.` }], structuredContent: result };
+  }));
   server.registerTool('vault.records.create', { title: 'Create record', description: 'Create a generic record from an approved record.create mutation.', inputSchema: { mutation: z.unknown() } }, withAuth(async ({ mutation }) => {
     const result = await applyMutation(mutation);
     if (result.auditEvent.action !== 'record.created') throw new Error('vault.records.create accepts only record.create mutations.');
@@ -433,6 +523,7 @@ export {
   listRecords,
   mutationSchema,
   provenanceSchema,
+  readAsset,
   readRecord,
   recoverPendingMutations,
   recordDraftSchema,

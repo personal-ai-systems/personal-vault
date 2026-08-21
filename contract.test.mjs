@@ -45,6 +45,25 @@ function mutation(operation, { id = 'A', key = `fixture-idempotency-${id}`, expi
   };
 }
 
+function assetAttach({ recordId, baseRevision, bytes = Buffer.from('hello asset'), role = 'attachment' }) {
+  return {
+    type: 'asset.attach',
+    recordId,
+    baseRevision,
+    asset: {
+      privacy: 'restricted',
+      mediaType: 'application/octet-stream',
+      byteLength: bytes.length,
+      contentHash: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+      originalName: 'fixture.bin',
+      provenance: provenance(),
+      metadata: { 'vault.fixture': true },
+    },
+    reference: { role },
+    payload: { encoding: 'base64', dataBase64: bytes.toString('base64') },
+  };
+}
+
 async function fixtureRuntime(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'personal-vault-contract-'));
   t.after(async () => rm(root, { recursive: true, force: true }));
@@ -194,6 +213,146 @@ test('change feed paginates with opaque cursors and accurate hasMore', async (t)
   assert.equal(emptyPage.nextCursor, secondPage.nextCursor);
   assert.equal(emptyPage.hasMore, false);
   await assert.rejects(runtime.listChanges('v1:not-a-number', 2), /Invalid change cursor/);
+});
+
+test('asset.attach persists a content-addressed payload and appends a record revision', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('hello asset');
+  const op = assetAttach({ recordId: created.recordId, baseRevision: 1, bytes });
+  const attachMutation = mutation(op, { id: 'B' });
+  const result = await runtime.applyMutation(attachMutation);
+
+  assert.equal(result.auditEvent.action, 'asset.attached');
+  assert.deepEqual(result.auditEvent.resource, { recordId: created.recordId, revision: 2, assetId: result.asset.assetId });
+  assert.equal(result.record.revision, 2);
+  assert.equal(result.record.assetRefs.length, 1);
+  assert.equal(result.record.assetRefs[0].assetId, result.asset.assetId);
+  assert.equal(result.asset.contentHash, `sha256:${createHash('sha256').update(bytes).digest('hex')}`);
+
+  const storedAsset = await runtime.readAsset(result.asset.assetId);
+  assert.deepEqual(storedAsset, result.asset);
+  const payloadPath = path.join(root, '.personal-vault', 'assets', 'payloads', `${createHash('sha256').update(bytes).digest('hex')}.bin`);
+  assert.deepEqual(await readFile(payloadPath), bytes);
+
+  const replay = await runtime.applyMutation(attachMutation);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.asset.assetId, result.asset.assetId);
+});
+
+test('asset.attach rejects hash and byteLength mismatches without writes', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('hello asset');
+
+  const badHash = assetAttach({ recordId: created.recordId, baseRevision: 1, bytes });
+  badHash.asset.contentHash = `sha256:${'0'.repeat(64)}`;
+  await assert.rejects(runtime.applyMutation(mutation(badHash, { id: 'B' })), /Asset content hash/);
+
+  const badLength = assetAttach({ recordId: created.recordId, baseRevision: 1, bytes });
+  badLength.asset.byteLength = 1;
+  await assert.rejects(runtime.applyMutation(mutation(badLength, { id: 'C' })), /Asset byteLength/);
+
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.equal(files.audit.length, 1);
+  assert.equal(Object.keys(files.idempotency).length, 1);
+  assert.deepEqual(await readdir(path.join(root, '.personal-vault', 'assets', 'payloads')), []);
+  assert.deepEqual(await readdir(path.join(root, '.personal-vault', 'assets', 'meta')), []);
+});
+
+test('audit failure rolls back asset.attach revision and removes new asset files', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const auditPath = path.join(root, '.personal-vault', 'audit', 'events.jsonl');
+  await rm(auditPath, { force: true });
+  await mkdir(auditPath, { recursive: true });
+
+  const bytes = Buffer.from('hello asset');
+  await assert.rejects(
+    runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1, bytes }), { id: 'B' })),
+    /EISDIR|illegal operation on a directory|Is a directory/i,
+  );
+
+  assert.deepEqual(await runtime.readRecord(created.recordId), created);
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.deepEqual(files.audit, []);
+  assert.deepEqual(await readdir(path.join(root, '.personal-vault', 'assets', 'payloads')), []);
+  assert.deepEqual(await readdir(path.join(root, '.personal-vault', 'assets', 'meta')), []);
+});
+
+test('recovery commits asset.attach idempotency when audit exists but index was lost', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('hello asset');
+  const op = assetAttach({ recordId: created.recordId, baseRevision: 1, bytes });
+  const attachMutation = mutation(op, { id: 'B', key: 'fixture-asset-crash-key' });
+  const applied = await runtime.applyMutation(attachMutation);
+  const store = path.join(root, '.personal-vault');
+  const idempotencyPath = path.join(store, 'indexes', 'idempotency.json');
+  const journalPath = path.join(store, 'indexes', 'pending.jsonl');
+  const storedIdempotency = JSON.parse(await readFile(idempotencyPath, 'utf8'));
+  const fingerprint = storedIdempotency['fixture-asset-crash-key'].fingerprint;
+  await rm(idempotencyPath, { force: true });
+  await appendFile(journalPath, `${JSON.stringify({
+    idempotencyKey: 'fixture-asset-crash-key',
+    fingerprint,
+    mutationId: applied.auditEvent.mutationId,
+    operationType: 'asset.attach',
+    recordId: created.recordId,
+    previousRecord: created,
+    assetId: applied.asset.assetId,
+    assetMetaPath: path.join(store, 'assets', 'meta', `${applied.asset.assetId}.json`),
+    assetPayloadPath: path.join(store, 'assets', 'payloads', `${createHash('sha256').update(bytes).digest('hex')}.bin`),
+    assetPayloadExisted: false,
+  })}\n`, 'utf8');
+
+  assert.deepEqual(await runtime.recoverPendingMutations(), { recovered: 1, committed: 1, rolledBack: 0 });
+  const replay = await runtime.applyMutation(attachMutation);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.asset.assetId, applied.asset.assetId);
+  const files = await storeFiles(root);
+  assert.equal(files.audit.length, 2, 'recovery must not duplicate audit events');
+  assert.equal(await readFile(journalPath, 'utf8'), '');
+});
+
+test('recovery rolls back asset.attach that never reached audit and removes new asset files', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('hello asset');
+  const replacement = { ...created, revision: 2, updatedAt: new Date().toISOString(), assetRefs: [{ assetId: `pva_${'E'.repeat(26)}`, role: 'attachment' }] };
+  const store = path.join(root, '.personal-vault');
+  const recordPath = path.join(store, 'records', `${created.recordId}.md`);
+  const metaPath = path.join(store, 'assets', 'meta', `pva_${'E'.repeat(26)}.json`);
+  const payloadPath = path.join(store, 'assets', 'payloads', `${createHash('sha256').update(bytes).digest('hex')}.bin`);
+  const journalPath = path.join(store, 'indexes', 'pending.jsonl');
+  await writeFile(recordPath, runtime.toMarkdown(replacement), 'utf8');
+  await mkdir(path.dirname(metaPath), { recursive: true });
+  await mkdir(path.dirname(payloadPath), { recursive: true });
+  await writeFile(metaPath, '{}\n', 'utf8');
+  await writeFile(payloadPath, bytes);
+  await appendFile(journalPath, `${JSON.stringify({
+    idempotencyKey: 'fixture-asset-uncommitted',
+    fingerprint: 'f'.repeat(64),
+    mutationId: `pvm_${'E'.repeat(26)}`,
+    operationType: 'asset.attach',
+    recordId: created.recordId,
+    previousRecord: created,
+    assetId: `pva_${'E'.repeat(26)}`,
+    assetMetaPath: metaPath,
+    assetPayloadPath: payloadPath,
+    assetPayloadExisted: false,
+  })}\n`, 'utf8');
+
+  assert.deepEqual(await runtime.recoverPendingMutations(), { recovered: 1, committed: 0, rolledBack: 1 });
+  assert.deepEqual(await runtime.readRecord(created.recordId), created);
+  await assert.rejects(readFile(metaPath), /ENOENT/);
+  await assert.rejects(readFile(payloadPath), /ENOENT/);
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.equal(files.audit.length, 1);
+  assert.equal(Object.keys(files.idempotency).length, 1);
 });
 
 test('audit failure restores the previous revision of an existing record', async (t) => {
