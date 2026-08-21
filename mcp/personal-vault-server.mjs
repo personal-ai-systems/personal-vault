@@ -181,10 +181,12 @@ const AUDIT_ACTIONS = {
 };
 
 async function appendAudit({ mutation, record }) {
+  const existingEvents = await readAuditEvents();
+  const previousSequence = existingEvents.length ? existingEvents.at(-1).sequence : 0;
   const event = {
     contractVersion: CONTRACT_VERSION,
     eventId: makeId('pve'),
-    sequence: Date.now(),
+    sequence: Math.max(Date.now(), previousSequence + 1),
     occurredAt: new Date().toISOString(),
     mutationId: mutation.mutationId,
     action: AUDIT_ACTIONS[mutation.operation.type],
@@ -307,6 +309,25 @@ async function listRecords() {
   return Promise.all(entries.filter((entry) => entry.isFile() && entry.name.endsWith('.md')).map((entry) => readRecord(entry.name.slice(0, -3))));
 }
 
+async function searchRecords(query, limit = 20) {
+  const normalized = query.toLowerCase();
+  return (await listRecords()).flatMap((record) => {
+    const searchable = `${record.title || ''}\n${record.content.text}`;
+    const haystack = searchable.toLowerCase();
+    const index = haystack.indexOf(normalized);
+    return index < 0 ? [] : [{ recordId: record.recordId, revision: record.revision, state: record.state, privacy: record.privacy, title: record.title || null, score: 1, snippet: searchable.slice(Math.max(0, index - 120), index + 280).replace(/\s+/g, ' ').trim(), matchedFields: record.title?.toLowerCase().includes(normalized) ? ['title'] : ['content'] }];
+  }).slice(0, limit);
+}
+
+async function listChanges(cursor = 'v1:0', limit = 50) {
+  const afterSequence = Number(cursor.slice(3));
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) throw new Error('Invalid change cursor.');
+  const remaining = (await readAuditEvents()).filter((event) => event.sequence > afterSequence);
+  const events = remaining.slice(0, limit);
+  const nextCursor = `v1:${events.length ? events.at(-1).sequence : afterSequence}`;
+  return { contractVersion: CONTRACT_VERSION, events, nextCursor, hasMore: remaining.length > events.length };
+}
+
 function getHeader(headers, name) {
   const value = headers[name];
   return Array.isArray(value) ? value[0] : value;
@@ -364,23 +385,12 @@ function createMcpServer() {
     return { content: [{ type: 'text', text: record.content.text }], structuredContent: { record } };
   }));
   server.registerTool('vault.records.search', { title: 'Search records', description: 'Search generic record title and content without domain interpretation.', inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(100).optional() } }, withAuth(async ({ query, limit = 20 }) => {
-    const normalized = query.toLowerCase();
-    const matches = (await listRecords()).flatMap((record) => {
-      const searchable = `${record.title || ''}\n${record.content.text}`;
-      const haystack = searchable.toLowerCase();
-      const index = haystack.indexOf(normalized);
-      return index < 0 ? [] : [{ recordId: record.recordId, revision: record.revision, state: record.state, privacy: record.privacy, title: record.title || null, score: 1, snippet: searchable.slice(Math.max(0, index - 120), index + 280).replace(/\s+/g, ' ').trim(), matchedFields: record.title?.toLowerCase().includes(normalized) ? ['title'] : ['content'] }];
-    }).slice(0, limit);
+    const matches = await searchRecords(query, limit);
     return { content: [{ type: 'text', text: matches.length ? `Found ${matches.length} record(s).` : 'No records found.' }], structuredContent: { query, matches } };
   }));
   server.registerTool('vault.changes.list', { title: 'List changes', description: 'List generic audit events after an optional opaque cursor.', inputSchema: { cursor: z.string().regex(/^v1:[A-Za-z0-9_-]{1,512}$/).optional(), limit: z.number().int().min(1).max(100).optional() } }, withAuth(async ({ cursor = 'v1:0', limit = 50 }) => {
-    const afterSequence = Number(cursor.slice(3));
-    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) throw new Error('Invalid change cursor.');
-    const text = await readFile(AUDIT_PATH, 'utf8').catch((error) => error?.code === 'ENOENT' ? '' : Promise.reject(error));
-    const remaining = text.split('\n').filter(Boolean).map((line) => JSON.parse(line)).filter((event) => event.sequence > afterSequence);
-    const events = remaining.slice(0, limit);
-    const nextCursor = `v1:${events.length ? events.at(-1).sequence : afterSequence}`;
-    return { content: [{ type: 'text', text: `Returned ${events.length} change event(s).` }], structuredContent: { contractVersion: CONTRACT_VERSION, events, nextCursor, hasMore: remaining.length > events.length } };
+    const changeFeed = await listChanges(cursor, limit);
+    return { content: [{ type: 'text', text: `Returned ${changeFeed.events.length} change event(s).` }], structuredContent: changeFeed };
   }));
   return server;
 }
@@ -419,6 +429,7 @@ export {
   applyMutation,
   contentSchema,
   fromMarkdown,
+  listChanges,
   listRecords,
   mutationSchema,
   provenanceSchema,
@@ -426,6 +437,7 @@ export {
   recoverPendingMutations,
   recordDraftSchema,
   recordSchema,
+  searchRecords,
   sha256,
   toMarkdown,
 };

@@ -154,6 +154,48 @@ test('rejected validation-stage mutations leave the temporary store unchanged', 
   assert.deepEqual(files.idempotency, {});
 });
 
+test('search returns contract-shaped title and content matches with limits', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Alpha title', text: 'First body.' }) }, { id: 'A' }));
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Other title', text: 'Body contains alpha token.' }) }, { id: 'B' }));
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Unrelated', text: 'No matching text.' }) }, { id: 'C' }));
+
+  const titleMatches = await runtime.searchRecords('alpha', 1);
+  assert.equal(titleMatches.length, 1);
+  assert.equal(titleMatches[0].score, 1);
+  assert.deepEqual(titleMatches[0].matchedFields, ['title']);
+  assert.match(titleMatches[0].snippet, /Alpha title/i);
+
+  const allMatches = await runtime.searchRecords('alpha', 20);
+  assert.equal(allMatches.length, 2);
+  assert.ok(allMatches.some((match) => match.matchedFields.includes('content')));
+});
+
+test('change feed paginates with opaque cursors and accurate hasMore', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'One' }) }, { id: 'A' }));
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Two' }) }, { id: 'B' }));
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Three' }) }, { id: 'C' }));
+
+  const firstPage = await runtime.listChanges('v1:0', 2);
+  assert.equal(firstPage.contractVersion, 'personal-vault/v1');
+  assert.equal(firstPage.events.length, 2);
+  assert.equal(firstPage.hasMore, true);
+  assert.match(firstPage.nextCursor, /^v1:\d+$/);
+  assert.ok(firstPage.events[0].sequence < firstPage.events[1].sequence);
+
+  const secondPage = await runtime.listChanges(firstPage.nextCursor, 2);
+  assert.equal(secondPage.events.length, 1);
+  assert.equal(secondPage.hasMore, false);
+  assert.notEqual(secondPage.events[0].eventId, firstPage.events[1].eventId);
+
+  const emptyPage = await runtime.listChanges(secondPage.nextCursor, 2);
+  assert.deepEqual(emptyPage.events, []);
+  assert.equal(emptyPage.nextCursor, secondPage.nextCursor);
+  assert.equal(emptyPage.hasMore, false);
+  await assert.rejects(runtime.listChanges('v1:not-a-number', 2), /Invalid change cursor/);
+});
+
 test('audit failure restores the previous revision of an existing record', async (t) => {
   const { root, runtime } = await fixtureRuntime(t);
   const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
