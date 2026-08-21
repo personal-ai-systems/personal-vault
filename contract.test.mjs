@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -181,6 +181,105 @@ test('audit failure restores the previous revision of an existing record', async
   assert.equal(files.records.length, 1);
   assert.deepEqual(files.audit, []);
   assert.equal(Object.keys(files.idempotency).length, 1, 'only the successful create mutation remains indexed');
+});
+
+test('recovery completes idempotency after audit committed but index persistence was lost', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const create = mutation({ type: 'record.create', record: draft() }, { id: 'A', key: 'fixture-crash-window-key' });
+  const applied = await runtime.applyMutation(create);
+  const store = path.join(root, '.personal-vault');
+  const idempotencyPath = path.join(store, 'indexes', 'idempotency.json');
+  const journalPath = path.join(store, 'indexes', 'pending.jsonl');
+  const storedIdempotency = JSON.parse(await readFile(idempotencyPath, 'utf8'));
+  const fingerprint = storedIdempotency[create.idempotencyKey].fingerprint;
+
+  await rm(idempotencyPath, { force: true });
+  await appendFile(journalPath, `${JSON.stringify({
+    idempotencyKey: create.idempotencyKey,
+    fingerprint,
+    mutationId: create.mutationId,
+    operationType: create.operation.type,
+    recordId: applied.record.recordId,
+    previousRecord: null,
+  })}\n`, 'utf8');
+
+  assert.deepEqual(await runtime.recoverPendingMutations(), { recovered: 1, committed: 1, rolledBack: 0 });
+  const replay = await runtime.applyMutation(create);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.record.recordId, applied.record.recordId);
+
+  const files = await storeFiles(root);
+  assert.equal(files.audit.length, 1, 'recovery must not append a duplicate audit event');
+  assert.equal(Object.keys(files.idempotency).length, 1);
+  assert.equal(await readFile(journalPath, 'utf8'), '');
+});
+
+test('recovery removes a newly created record that never reached audit', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const now = new Date().toISOString();
+  const recordId = `pvr_${'C'.repeat(26)}`;
+  const record = {
+    contractVersion: 'personal-vault/v1',
+    recordId,
+    revision: 1,
+    state: 'active',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: ACTOR,
+    ...draft(),
+  };
+  const store = path.join(root, '.personal-vault');
+  const recordPath = path.join(store, 'records', `${recordId}.md`);
+  const journalPath = path.join(store, 'indexes', 'pending.jsonl');
+  await mkdir(path.dirname(recordPath), { recursive: true });
+  await mkdir(path.dirname(journalPath), { recursive: true });
+  await writeFile(recordPath, runtime.toMarkdown(record), 'utf8');
+  await writeFile(journalPath, `${JSON.stringify({
+    idempotencyKey: 'fixture-uncommitted-create',
+    fingerprint: createHash('sha256').update('uncommitted-create').digest('hex'),
+    mutationId: `pvm_${'C'.repeat(26)}`,
+    operationType: 'record.create',
+    recordId,
+    previousRecord: null,
+  })}\n`, 'utf8');
+
+  assert.deepEqual(await runtime.recoverPendingMutations(), { recovered: 1, committed: 0, rolledBack: 1 });
+  const files = await storeFiles(root);
+  assert.deepEqual(files.records, []);
+  assert.deepEqual(files.audit, []);
+  assert.deepEqual(files.idempotency, {});
+});
+
+test('recovery restores an existing record when its replacement never reached audit', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const revisedText = '# Interrupted revision\nMust not survive recovery.';
+  const replacement = {
+    ...created,
+    revision: 2,
+    updatedAt: new Date().toISOString(),
+    title: 'Interrupted revision',
+    content: { ...created.content, text: revisedText, hash: hash(revisedText) },
+  };
+  const store = path.join(root, '.personal-vault');
+  const recordPath = path.join(store, 'records', `${created.recordId}.md`);
+  const journalPath = path.join(store, 'indexes', 'pending.jsonl');
+  await writeFile(recordPath, runtime.toMarkdown(replacement), 'utf8');
+  await appendFile(journalPath, `${JSON.stringify({
+    idempotencyKey: 'fixture-uncommitted-revise',
+    fingerprint: createHash('sha256').update('uncommitted-revise').digest('hex'),
+    mutationId: `pvm_${'D'.repeat(26)}`,
+    operationType: 'record.revise',
+    recordId: created.recordId,
+    previousRecord: created,
+  })}\n`, 'utf8');
+
+  assert.deepEqual(await runtime.recoverPendingMutations(), { recovered: 1, committed: 0, rolledBack: 1 });
+  assert.deepEqual(await runtime.readRecord(created.recordId), created);
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.equal(files.audit.length, 1, 'only the original create event remains');
+  assert.equal(Object.keys(files.idempotency).length, 1, 'only the original create is indexed');
 });
 
 test('audit failure rolls back the staged record write', async (t) => {

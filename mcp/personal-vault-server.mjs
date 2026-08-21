@@ -21,6 +21,7 @@ const STORE_ROOT = path.join(VAULT_ROOT, '.personal-vault');
 const RECORDS_ROOT = path.join(STORE_ROOT, 'records');
 const AUDIT_PATH = path.join(STORE_ROOT, 'audit', 'events.jsonl');
 const IDEMPOTENCY_PATH = path.join(STORE_ROOT, 'indexes', 'idempotency.json');
+const JOURNAL_PATH = path.join(STORE_ROOT, 'indexes', 'pending.jsonl');
 
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const RECORD_ID_PATTERN = /^pvr_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -110,6 +111,65 @@ async function readIdempotencyIndex() {
     if (error?.code === 'ENOENT') return {};
     throw error;
   }
+}
+
+async function readAuditEvents() {
+  const text = await readFile(AUDIT_PATH, 'utf8').catch((error) => error?.code === 'ENOENT' ? '' : Promise.reject(error));
+  return text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+}
+
+async function readJournal() {
+  const text = await readFile(JOURNAL_PATH, 'utf8').catch((error) => error?.code === 'ENOENT' ? '' : Promise.reject(error));
+  return text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+}
+
+async function writeJournal(entries) {
+  await ensureStore();
+  const text = entries.map((entry) => JSON.stringify(entry)).join('\n');
+  await writeFile(JOURNAL_PATH, text ? `${text}\n` : '', 'utf8');
+}
+
+async function appendJournal(entry) {
+  await ensureStore();
+  await appendFile(JOURNAL_PATH, `${JSON.stringify(entry)}\n`, 'utf8');
+}
+
+async function removeJournalEntry(entry) {
+  const entries = await readJournal();
+  await writeJournal(entries.filter((candidate) => candidate.mutationId !== entry.mutationId));
+}
+
+async function recoverPendingMutations() {
+  await ensureStore();
+  const entries = await readJournal();
+  if (!entries.length) return { recovered: 0, committed: 0, rolledBack: 0 };
+
+  const idempotency = await readIdempotencyIndex();
+  const auditEvents = await readAuditEvents();
+  let committed = 0;
+  let rolledBack = 0;
+
+  for (const entry of entries) {
+    const auditEvent = auditEvents.find((event) => event.mutationId === entry.mutationId);
+    if (auditEvent) {
+      const record = await readRecord(entry.recordId);
+      idempotency[entry.idempotencyKey] = {
+        fingerprint: entry.fingerprint,
+        result: { record, auditEvent, replayed: false },
+      };
+      committed += 1;
+    } else if (entry.previousRecord) {
+      await writeRecord(entry.previousRecord);
+      rolledBack += 1;
+    } else {
+      await rm(recordPath(entry.recordId), { force: true });
+      rolledBack += 1;
+    }
+  }
+
+  await writeFile(IDEMPOTENCY_PATH, `${JSON.stringify(idempotency, null, 2)}\n`, 'utf8');
+  await writeJournal([]);
+  return { recovered: entries.length, committed, rolledBack };
 }
 
 const AUDIT_ACTIONS = {
@@ -211,6 +271,15 @@ async function applyMutation(input) {
       record = { ...record, revision: record.revision + 1, updatedAt: now, state: operation.type === 'record.archive' ? 'archived' : operation.type === 'record.restore' ? 'active' : 'trashed' };
     }
   }
+  const journalEntry = {
+    idempotencyKey: mutation.idempotencyKey,
+    fingerprint,
+    mutationId: mutation.mutationId,
+    operationType: operation.type,
+    recordId: record.recordId,
+    previousRecord,
+  };
+  await appendJournal(journalEntry);
   await writeRecord(record);
   let auditEvent;
   try {
@@ -219,6 +288,7 @@ async function applyMutation(input) {
     try {
       if (previousRecord) await writeRecord(previousRecord);
       else await rm(recordPath(record.recordId), { force: true });
+      await removeJournalEntry(journalEntry);
     } catch (rollbackError) {
       throw new AggregateError([auditError, rollbackError], 'Audit append failed and record rollback also failed.');
     }
@@ -227,6 +297,7 @@ async function applyMutation(input) {
   const result = { record, auditEvent, replayed: false };
   idempotency[mutation.idempotencyKey] = { fingerprint, result };
   await writeFile(IDEMPOTENCY_PATH, `${JSON.stringify(idempotency, null, 2)}\n`, 'utf8');
+  await removeJournalEntry(journalEntry);
   return result;
 }
 
@@ -336,7 +407,12 @@ const httpServer = createServer(async (req, res) => {
 });
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
-  httpServer.listen(PORT, () => console.log(`Personal Vault MCP server listening on http://localhost:${PORT}${MCP_PATH}`));
+  recoverPendingMutations()
+    .then(() => httpServer.listen(PORT, () => console.log(`Personal Vault MCP server listening on http://localhost:${PORT}${MCP_PATH}`)))
+    .catch((error) => {
+      console.error('Personal Vault recovery failed:', error);
+      process.exitCode = 1;
+    });
 }
 
 export {
@@ -347,6 +423,7 @@ export {
   mutationSchema,
   provenanceSchema,
   readRecord,
+  recoverPendingMutations,
   recordDraftSchema,
   recordSchema,
   sha256,
