@@ -59,6 +59,8 @@ The service rejects unsupported versions, expired approval, unauthorized actors,
 
 Each accepted mutation creates one audit event with an event ID, sequence, action, actor, resource, resulting revision and provenance.
 
+Audit events form an integrity chain. Each event carries `eventHash` (SHA-256 of the event payload) and, after the first event, `previousEventHash` pointing to the preceding event's hash. This lets consumers and integrity checks detect reordering or tampering of the history.
+
 `vault.changes.list` accepts an opaque cursor and returns ordered events, a `nextCursor` and `hasMore`. Consumers process events idempotently by `eventId`; a cursor reset triggers re-synchronization.
 
 ## MCP/API operations

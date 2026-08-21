@@ -224,9 +224,10 @@ const AUDIT_ACTIONS = {
 async function appendAudit({ mutation, record, asset }) {
   const existingEvents = await readAuditEvents();
   const previousSequence = existingEvents.length ? existingEvents.at(-1).sequence : 0;
+  const previousEventHash = existingEvents.length ? existingEvents.at(-1).eventHash : null;
   const resource = { recordId: record.recordId, revision: record.revision };
   if (asset) resource.assetId = asset.assetId;
-  const event = {
+  const baseEvent = {
     contractVersion: CONTRACT_VERSION,
     eventId: makeId('pve'),
     sequence: Math.max(Date.now(), previousSequence + 1),
@@ -236,6 +237,11 @@ async function appendAudit({ mutation, record, asset }) {
     actor: mutation.requestedBy,
     resource,
     provenance: mutation.provenance,
+  };
+  const event = {
+    ...baseEvent,
+    ...(previousEventHash ? { previousEventHash } : {}),
+    eventHash: `sha256:${sha256(JSON.stringify({ ...baseEvent, ...(previousEventHash ? { previousEventHash } : {}) }))}`,
   };
   await appendFile(AUDIT_PATH, `${JSON.stringify(event)}\n`, 'utf8');
   return event;
@@ -706,11 +712,22 @@ async function checkIntegrity() {
     issues.push(`audit: ${error.message}`);
   }
   let previousSequence = 0;
+  let previousEventHash = null;
   for (const event of audit) {
     if (!Number.isSafeInteger(event.sequence) || event.sequence <= previousSequence) {
       issues.push(`audit ${event.eventId}: non-monotonic sequence ${event.sequence}`);
     }
     previousSequence = event.sequence;
+    if (event.eventHash) {
+      const { eventHash, ...rest } = event;
+      if ((event.previousEventHash ?? null) !== previousEventHash) {
+        issues.push(`audit ${event.eventId}: hash chain broken (previousEventHash mismatch)`);
+      }
+      if (eventHash !== `sha256:${sha256(JSON.stringify(rest))}`) {
+        issues.push(`audit ${event.eventId}: event hash mismatch`);
+      }
+      previousEventHash = eventHash;
+    }
   }
 
   try {

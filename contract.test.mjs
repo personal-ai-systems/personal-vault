@@ -550,6 +550,38 @@ test('secret scan detects api keys and private keys in a fixture tree', async (t
   assert.deepEqual(rules, ['generic-assignment', 'openai-api-key', 'private-key']);
 });
 
+test('audit events form a verifiable hash chain', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+
+  const first = (await runtime.listChanges('v1:0', 10)).events[0];
+  const second = (await runtime.listChanges('v1:0', 10)).events[1];
+  assert.match(first.eventHash, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(first.previousEventHash, undefined);
+  assert.equal(second.previousEventHash, first.eventHash);
+  assert.match(second.eventHash, /^sha256:[a-f0-9]{64}$/);
+
+  const integrity = await runtime.checkIntegrity();
+  assert.equal(integrity.ok, true, JSON.stringify(integrity.issues));
+});
+
+test('integrity check detects a broken audit hash chain', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+  const auditPath = path.join(root, '.personal-vault', 'audit', 'events.jsonl');
+  const events = (await readFile(auditPath, 'utf8')).split('\n').filter(Boolean).map(JSON.parse);
+  events[0].actor.id = 'tampered-actor';
+  const { eventHash: removedHash, ...tamperedRest } = events[0];
+  events[0].eventHash = `sha256:${createHash('sha256').update(JSON.stringify(tamperedRest)).digest('hex')}`;
+  await writeFile(auditPath, events.map((event) => JSON.stringify(event)).join('\n') + '\n', 'utf8');
+
+  const integrity = await runtime.checkIntegrity();
+  assert.equal(integrity.ok, false);
+  assert.ok(integrity.issues.some((issue) => issue.includes('hash chain broken')), JSON.stringify(integrity.issues));
+});
+
 test('audit failure restores the previous revision of an existing record', async (t) => {
   const { root, runtime } = await fixtureRuntime(t);
   const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
@@ -747,6 +779,5 @@ test('integrity check detects non-monotonic audit sequences', async (t) => {
 
   const result = await runtime.checkIntegrity();
   assert.equal(result.ok, false);
-  assert.equal(result.issues.length, 1);
-  assert.match(result.issues[0], /non-monotonic sequence/);
+  assert.ok(result.issues.some((issue) => issue.includes('non-monotonic sequence')), JSON.stringify(result.issues));
 });
