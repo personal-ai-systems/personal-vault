@@ -2,8 +2,9 @@
 
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile, appendFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, appendFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
@@ -21,19 +22,32 @@ const RECORDS_ROOT = path.join(STORE_ROOT, 'records');
 const AUDIT_PATH = path.join(STORE_ROOT, 'audit', 'events.jsonl');
 const IDEMPOTENCY_PATH = path.join(STORE_ROOT, 'indexes', 'idempotency.json');
 
-const actorSchema = z.object({ kind: z.enum(['user', 'application', 'service', 'migration', 'recovery']), id: z.string().min(1).max(256), displayName: z.string().min(1).max(256).optional() });
+const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const RECORD_ID_PATTERN = /^pvr_[0-9A-HJKMNP-TV-Z]{26}$/;
+const actorSchema = z.object({ kind: z.enum(['user', 'application', 'service', 'migration', 'recovery']), id: z.string().min(1).max(256), displayName: z.string().min(1).max(256).optional() }).strict();
+const processorSchema = z.object({ id: z.string().regex(/^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$/), version: z.string().min(1).max(128), configurationHash: z.string().regex(SHA256_PATTERN).optional() }).strict();
 const provenanceSchema = z.object({
   origin: z.enum(['direct', 'import', 'derivation', 'migration', 'recovery']),
   capturedAt: z.string().datetime(),
   capturedBy: actorSchema,
   sourceLocator: z.string().max(4096).optional(),
-  sourceRecordIds: z.array(z.string()).optional(),
-  processor: z.object({ id: z.string().min(1), version: z.string().min(1), configurationHash: z.string().optional() }).optional(),
-  sourceHash: z.string().optional(),
+  sourceRecordIds: z.array(z.string().regex(RECORD_ID_PATTERN)).optional(),
+  processor: processorSchema.optional(),
+  sourceHash: z.string().regex(SHA256_PATTERN).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.origin === 'derivation' && (!value.sourceRecordIds || !value.processor)) context.addIssue({ code: 'custom', message: 'Derived provenance requires sourceRecordIds and processor.' });
 });
-const approvalSchema = z.object({ kind: z.enum(['user', 'migration', 'recovery']), approvedAt: z.string().datetime(), approvedBy: actorSchema, evidenceRef: z.string().min(1).max(4096), expiresAt: z.string().datetime().optional() });
-const recordDraftSchema = z.object({ privacy: z.enum(['private', 'shared', 'public']), title: z.string().min(1).max(1024).optional(), content: z.string(), provenance: provenanceSchema, metadata: z.record(z.string(), z.unknown()).default({}), assetRefs: z.array(z.unknown()).default([]) });
-const mutationSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), mutationId: z.string().regex(/^pvm_[0-9A-HJKMNP-TV-Z]{26}$/), requestedAt: z.string().datetime(), requestedBy: actorSchema, idempotencyKey: z.string().min(16).max(256), approval: approvalSchema, operation: z.object({ type: z.enum(['record.create', 'record.revise', 'record.archive', 'record.restore', 'record.trash']) }).passthrough(), provenance: provenanceSchema });
+const approvalSchema = z.object({ kind: z.enum(['user', 'migration', 'recovery']), approvedAt: z.string().datetime(), approvedBy: actorSchema, evidenceRef: z.string().min(1).max(4096), expiresAt: z.string().datetime().optional() }).strict();
+const privacySchema = z.enum(['private', 'restricted', 'shared', 'public']);
+const contentSchema = z.object({ format: z.enum(['markdown', 'plain-text']), text: z.string(), hash: z.string().regex(SHA256_PATTERN), language: z.string().regex(/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})*$/).optional() }).strict();
+const assetReferenceSchema = z.object({ assetId: z.string().regex(/^pva_[0-9A-HJKMNP-TV-Z]{26}$/), role: z.enum(['attachment', 'preview', 'source', 'derived']), caption: z.string().max(4096).optional() }).strict();
+const metadataSchema = z.record(z.string(), z.unknown());
+const recordDraftSchema = z.object({ privacy: privacySchema, title: z.string().min(1).max(1024).optional(), content: contentSchema, provenance: provenanceSchema, metadata: metadataSchema, assetRefs: z.array(assetReferenceSchema).optional().default([]) }).strict();
+const recordSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), recordId: z.string().regex(RECORD_ID_PATTERN), revision: z.number().int().min(1), state: z.enum(['active', 'archived', 'trashed']), createdAt: z.string().datetime(), updatedAt: z.string().datetime(), createdBy: actorSchema, privacy: privacySchema, title: z.string().min(1).max(1024).optional(), content: contentSchema, provenance: provenanceSchema, assetRefs: z.array(assetReferenceSchema), metadata: metadataSchema }).strict();
+const createOperationSchema = z.object({ type: z.literal('record.create'), record: recordDraftSchema }).strict();
+const reviseOperationSchema = z.object({ type: z.literal('record.revise'), recordId: z.string().regex(RECORD_ID_PATTERN), baseRevision: z.number().int().min(1), record: recordSchema }).strict();
+const lifecycleOperationSchema = z.object({ type: z.enum(['record.archive', 'record.restore', 'record.trash']), recordId: z.string().regex(RECORD_ID_PATTERN), baseRevision: z.number().int().min(1), reason: z.string().max(4096).optional() }).strict();
+const mutationSchema = z.object({ contractVersion: z.literal(CONTRACT_VERSION), mutationId: z.string().regex(/^pvm_[0-9A-HJKMNP-TV-Z]{26}$/), requestedAt: z.string().datetime(), requestedBy: actorSchema, idempotencyKey: z.string().min(16).max(256), approval: approvalSchema, operation: z.union([createOperationSchema, reviseOperationSchema, lifecycleOperationSchema]), provenance: provenanceSchema }).strict();
 
 const CROCKFORD_BASE32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -63,14 +77,17 @@ function recordPath(recordId) {
 }
 
 function toMarkdown(record) {
-  const { content, ...header } = record;
-  return `<!-- personal-vault-record\n${JSON.stringify(header, null, 2)}\n-->\n${content}`;
+  const { content, ...recordHeader } = record;
+  const { text, ...contentHeader } = content;
+  const header = { ...recordHeader, content: contentHeader };
+  return `<!-- personal-vault-record\n${JSON.stringify(header, null, 2)}\n-->\n${text}`;
 }
 
 function fromMarkdown(markdown) {
   const match = markdown.match(/^<!-- personal-vault-record\n([\s\S]*?)\n-->\n?([\s\S]*)$/);
   if (!match) throw new Error('Record is not a Personal Vault v1 Markdown record.');
-  return { ...JSON.parse(match[1]), content: match[2] };
+  const header = JSON.parse(match[1]);
+  return recordSchema.parse({ ...header, content: { ...header.content, text: match[2] } });
 }
 
 async function ensureStore() {
@@ -95,6 +112,14 @@ async function readIdempotencyIndex() {
   }
 }
 
+const AUDIT_ACTIONS = {
+  'record.create': 'record.created',
+  'record.revise': 'record.revised',
+  'record.archive': 'record.archived',
+  'record.restore': 'record.restored',
+  'record.trash': 'record.trashed',
+};
+
 async function appendAudit({ mutation, record }) {
   const event = {
     contractVersion: CONTRACT_VERSION,
@@ -102,10 +127,9 @@ async function appendAudit({ mutation, record }) {
     sequence: Date.now(),
     occurredAt: new Date().toISOString(),
     mutationId: mutation.mutationId,
-    action: mutation.operation.type,
+    action: AUDIT_ACTIONS[mutation.operation.type],
     actor: mutation.requestedBy,
-    resourceId: record.recordId,
-    resultingRevision: record.revision,
+    resource: { recordId: record.recordId, revision: record.revision },
     provenance: mutation.provenance,
   };
   await appendFile(AUDIT_PATH, `${JSON.stringify(event)}\n`, 'utf8');
@@ -114,6 +138,10 @@ async function appendAudit({ mutation, record }) {
 
 function assertApproval(approval) {
   if (approval.expiresAt && new Date(approval.expiresAt).getTime() < Date.now()) throw new Error('Approval has expired.');
+}
+
+function assertContentIntegrity(content) {
+  if (content.hash !== `sha256:${sha256(content.text)}`) throw new Error('Record content hash does not match its text.');
 }
 
 function assertMetadata(metadata) {
@@ -136,10 +164,12 @@ async function applyMutation(input) {
 
   const now = new Date().toISOString();
   let record;
+  let previousRecord = null;
   const operation = mutation.operation;
   if (operation.type === 'record.create') {
     const draft = recordDraftSchema.parse(operation.record);
     assertMetadata(draft.metadata);
+    assertContentIntegrity(draft.content);
     record = {
       contractVersion: CONTRACT_VERSION,
       recordId: makeId('pvr'),
@@ -158,10 +188,14 @@ async function applyMutation(input) {
   } else {
     const recordId = z.string().min(1).parse(operation.recordId);
     record = await readRecord(recordId);
+    previousRecord = record;
     if (operation.baseRevision !== record.revision) throw new Error('Record revision conflict.');
     if (operation.type === 'record.revise') {
-      const replacement = recordDraftSchema.parse(operation.record);
+      const replacement = recordSchema.parse(operation.record);
+      if (replacement.recordId !== operation.recordId) throw new Error('Revised recordId does not match operation.recordId.');
+      if (replacement.revision !== operation.baseRevision + 1) throw new Error('Revised record must contain the next revision.');
       assertMetadata(replacement.metadata);
+      assertContentIntegrity(replacement.content);
       record = {
         ...record,
         revision: record.revision + 1,
@@ -178,7 +212,18 @@ async function applyMutation(input) {
     }
   }
   await writeRecord(record);
-  const auditEvent = await appendAudit({ mutation, record });
+  let auditEvent;
+  try {
+    auditEvent = await appendAudit({ mutation, record });
+  } catch (auditError) {
+    try {
+      if (previousRecord) await writeRecord(previousRecord);
+      else await rm(recordPath(record.recordId), { force: true });
+    } catch (rollbackError) {
+      throw new AggregateError([auditError, rollbackError], 'Audit append failed and record rollback also failed.');
+    }
+    throw auditError;
+  }
   const result = { record, auditEvent, replayed: false };
   idempotency[mutation.idempotencyKey] = { fingerprint, result };
   await writeFile(IDEMPOTENCY_PATH, `${JSON.stringify(idempotency, null, 2)}\n`, 'utf8');
@@ -240,27 +285,31 @@ function createMcpServer() {
   }));
   server.registerTool('vault.records.create', { title: 'Create record', description: 'Create a generic record from an approved record.create mutation.', inputSchema: { mutation: z.unknown() } }, withAuth(async ({ mutation }) => {
     const result = await applyMutation(mutation);
-    if (result.auditEvent.action !== 'record.create') throw new Error('vault.records.create accepts only record.create mutations.');
+    if (result.auditEvent.action !== 'record.created') throw new Error('vault.records.create accepts only record.create mutations.');
     return { content: [{ type: 'text', text: `Created record ${result.record.recordId}.` }], structuredContent: result };
   }));
   server.registerTool('vault.records.get', { title: 'Get record', description: 'Read a generic record by stable identifier.', inputSchema: { recordId: z.string().min(1) } }, withAuth(async ({ recordId }) => {
     const record = await readRecord(recordId);
-    return { content: [{ type: 'text', text: record.content }], structuredContent: { record } };
+    return { content: [{ type: 'text', text: record.content.text }], structuredContent: { record } };
   }));
   server.registerTool('vault.records.search', { title: 'Search records', description: 'Search generic record title and content without domain interpretation.', inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(100).optional() } }, withAuth(async ({ query, limit = 20 }) => {
     const normalized = query.toLowerCase();
     const matches = (await listRecords()).flatMap((record) => {
-      const haystack = `${record.title || ''}\n${record.content}`.toLowerCase();
+      const searchable = `${record.title || ''}\n${record.content.text}`;
+      const haystack = searchable.toLowerCase();
       const index = haystack.indexOf(normalized);
-      return index < 0 ? [] : [{ recordId: record.recordId, revision: record.revision, state: record.state, privacy: record.privacy, title: record.title || null, snippet: `${record.title || ''}\n${record.content}`.slice(Math.max(0, index - 120), index + 280).replace(/\s+/g, ' ').trim() }];
+      return index < 0 ? [] : [{ recordId: record.recordId, revision: record.revision, state: record.state, privacy: record.privacy, title: record.title || null, score: 1, snippet: searchable.slice(Math.max(0, index - 120), index + 280).replace(/\s+/g, ' ').trim(), matchedFields: record.title?.toLowerCase().includes(normalized) ? ['title'] : ['content'] }];
     }).slice(0, limit);
     return { content: [{ type: 'text', text: matches.length ? `Found ${matches.length} record(s).` : 'No records found.' }], structuredContent: { query, matches } };
   }));
-  server.registerTool('vault.changes.list', { title: 'List changes', description: 'List generic audit events after an optional numeric cursor.', inputSchema: { cursor: z.number().int().nonnegative().optional(), limit: z.number().int().min(1).max(100).optional() } }, withAuth(async ({ cursor = 0, limit = 50 }) => {
+  server.registerTool('vault.changes.list', { title: 'List changes', description: 'List generic audit events after an optional opaque cursor.', inputSchema: { cursor: z.string().regex(/^v1:[A-Za-z0-9_-]{1,512}$/).optional(), limit: z.number().int().min(1).max(100).optional() } }, withAuth(async ({ cursor = 'v1:0', limit = 50 }) => {
+    const afterSequence = Number(cursor.slice(3));
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) throw new Error('Invalid change cursor.');
     const text = await readFile(AUDIT_PATH, 'utf8').catch((error) => error?.code === 'ENOENT' ? '' : Promise.reject(error));
-    const events = text.split('\n').filter(Boolean).map((line) => JSON.parse(line)).filter((event) => event.sequence > cursor).slice(0, limit);
-    const nextCursor = events.length ? events.at(-1).sequence : cursor;
-    return { content: [{ type: 'text', text: `Returned ${events.length} change event(s).` }], structuredContent: { contractVersion: CONTRACT_VERSION, events, nextCursor, hasMore: false } };
+    const remaining = text.split('\n').filter(Boolean).map((line) => JSON.parse(line)).filter((event) => event.sequence > afterSequence);
+    const events = remaining.slice(0, limit);
+    const nextCursor = `v1:${events.length ? events.at(-1).sequence : afterSequence}`;
+    return { content: [{ type: 'text', text: `Returned ${events.length} change event(s).` }], structuredContent: { contractVersion: CONTRACT_VERSION, events, nextCursor, hasMore: remaining.length > events.length } };
   }));
   return server;
 }
@@ -286,4 +335,20 @@ const httpServer = createServer(async (req, res) => {
   }
 });
 
-httpServer.listen(PORT, () => console.log(`Personal Vault MCP server listening on http://localhost:${PORT}${MCP_PATH}`));
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
+  httpServer.listen(PORT, () => console.log(`Personal Vault MCP server listening on http://localhost:${PORT}${MCP_PATH}`));
+}
+
+export {
+  applyMutation,
+  contentSchema,
+  fromMarkdown,
+  listRecords,
+  mutationSchema,
+  provenanceSchema,
+  readRecord,
+  recordDraftSchema,
+  recordSchema,
+  sha256,
+  toMarkdown,
+};

@@ -1,0 +1,200 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import test from 'node:test';
+
+const SERVER_PATH = path.resolve('mcp/personal-vault-server.mjs');
+const ACTOR = { kind: 'user', id: 'kirill', displayName: 'Kirill' };
+let instanceNumber = 0;
+
+function hash(text) {
+  return `sha256:${createHash('sha256').update(text).digest('hex')}`;
+}
+
+function provenance(now = new Date().toISOString()) {
+  return { origin: 'direct', capturedAt: now, capturedBy: ACTOR };
+}
+
+function draft({ text = '# Fixture\nTemporary test data.', title = 'Fixture record', privacy = 'restricted', metadata = { 'vault.fixture': true } } = {}) {
+  return {
+    privacy,
+    title,
+    content: { format: 'markdown', text, hash: hash(text), language: 'en' },
+    provenance: provenance(),
+    assetRefs: [],
+    metadata,
+  };
+}
+
+function mutation(operation, { id = 'A', key = `fixture-idempotency-${id}`, expiresAt } = {}) {
+  const now = new Date().toISOString();
+  const approval = { kind: 'user', approvedAt: now, approvedBy: ACTOR, evidenceRef: `fixture:${id}` };
+  if (expiresAt) approval.expiresAt = expiresAt;
+  return {
+    contractVersion: 'personal-vault/v1',
+    mutationId: `pvm_${id.repeat(26)}`,
+    requestedAt: now,
+    requestedBy: ACTOR,
+    idempotencyKey: key.padEnd(16, '-'),
+    approval,
+    operation,
+    provenance: provenance(now),
+  };
+}
+
+async function fixtureRuntime(t) {
+  const root = await mkdtemp(path.join(tmpdir(), 'personal-vault-contract-'));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  process.env.PERSONAL_VAULT_ROOT = root;
+  instanceNumber += 1;
+  const runtime = await import(`${pathToFileURL(SERVER_PATH).href}?fixture=${instanceNumber}`);
+  return { root, runtime };
+}
+
+async function storeFiles(root) {
+  const store = path.join(root, '.personal-vault');
+  const records = await readdir(path.join(store, 'records')).catch((error) => error.code === 'ENOENT' ? [] : Promise.reject(error));
+  const audit = await readFile(path.join(store, 'audit', 'events.jsonl'), 'utf8').catch((error) => ['ENOENT', 'EISDIR'].includes(error.code) ? '' : Promise.reject(error));
+  const idempotency = await readFile(path.join(store, 'indexes', 'idempotency.json'), 'utf8').catch((error) => error.code === 'ENOENT' ? '{}' : Promise.reject(error));
+  return { records, audit: audit.split('\n').filter(Boolean).map(JSON.parse), idempotency: JSON.parse(idempotency) };
+}
+
+test('create persists a contract-shaped readable record and audit event', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const create = mutation({ type: 'record.create', record: draft() });
+  const result = await runtime.applyMutation(create);
+
+  assert.equal(result.replayed, false);
+  assert.equal(result.record.contractVersion, 'personal-vault/v1');
+  assert.equal(result.record.revision, 1);
+  assert.equal(result.record.state, 'active');
+  assert.equal(result.record.privacy, 'restricted');
+  assert.equal(result.record.content.text, '# Fixture\nTemporary test data.');
+  assert.equal(result.auditEvent.action, 'record.created');
+  assert.deepEqual(result.auditEvent.resource, { recordId: result.record.recordId, revision: 1 });
+
+  const stored = await runtime.readRecord(result.record.recordId);
+  assert.deepEqual(stored, result.record);
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.equal(files.audit.length, 1);
+  assert.equal(Object.keys(files.idempotency).length, 1);
+});
+
+test('revise and lifecycle mutations enforce revisions and emit contract actions', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const revisedText = '# Revised\nStill temporary.';
+  const replacement = {
+    ...created,
+    revision: 2,
+    updatedAt: new Date().toISOString(),
+    title: 'Revised fixture',
+    content: { ...created.content, text: revisedText, hash: hash(revisedText) },
+  };
+  const revised = await runtime.applyMutation(mutation({ type: 'record.revise', recordId: created.recordId, baseRevision: 1, record: replacement }, { id: 'B' }));
+  assert.equal(revised.record.revision, 2);
+  assert.equal(revised.record.content.text, revisedText);
+  assert.equal(revised.auditEvent.action, 'record.revised');
+
+  await assert.rejects(
+    runtime.applyMutation(mutation({ type: 'record.archive', recordId: created.recordId, baseRevision: 1 }, { id: 'C' })),
+    /Record revision conflict/,
+  );
+
+  const archived = await runtime.applyMutation(mutation({ type: 'record.archive', recordId: created.recordId, baseRevision: 2 }, { id: 'D' }));
+  const restored = await runtime.applyMutation(mutation({ type: 'record.restore', recordId: created.recordId, baseRevision: 3 }, { id: 'E' }));
+  const trashed = await runtime.applyMutation(mutation({ type: 'record.trash', recordId: created.recordId, baseRevision: 4 }, { id: 'F' }));
+  assert.deepEqual(
+    [archived.record.state, restored.record.state, trashed.record.state],
+    ['archived', 'active', 'trashed'],
+  );
+  assert.deepEqual(
+    [archived.auditEvent.action, restored.auditEvent.action, trashed.auditEvent.action],
+    ['record.archived', 'record.restored', 'record.trashed'],
+  );
+});
+
+test('idempotent replay is stable and conflicting reuse is rejected without duplicate audit', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const original = mutation({ type: 'record.create', record: draft() }, { id: 'A', key: 'fixture-replay-key' });
+  const first = await runtime.applyMutation(original);
+  const replay = await runtime.applyMutation(original);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.record.recordId, first.record.recordId);
+  assert.equal(replay.auditEvent.eventId, first.auditEvent.eventId);
+
+  const conflict = mutation({ type: 'record.create', record: draft({ title: 'Different' }) }, { id: 'B', key: 'fixture-replay-key' });
+  await assert.rejects(runtime.applyMutation(conflict), /Idempotency key conflicts/);
+
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.equal(files.audit.length, 1);
+  assert.equal(Object.keys(files.idempotency).length, 1);
+});
+
+test('rejected validation-stage mutations leave the temporary store unchanged', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const badHash = draft();
+  badHash.content.hash = `sha256:${'0'.repeat(64)}`;
+  await assert.rejects(runtime.applyMutation(mutation({ type: 'record.create', record: badHash }, { id: 'A' })), /content hash/);
+
+  const badMetadata = draft({ metadata: { unnamespaced: true } });
+  await assert.rejects(runtime.applyMutation(mutation({ type: 'record.create', record: badMetadata }, { id: 'B' })), /Metadata key must be namespaced/);
+
+  const expired = mutation({ type: 'record.create', record: draft() }, { id: 'C', expiresAt: '2000-01-01T00:00:00.000Z' });
+  await assert.rejects(runtime.applyMutation(expired), /Approval has expired/);
+
+  const files = await storeFiles(root);
+  assert.deepEqual(files.records, []);
+  assert.deepEqual(files.audit, []);
+  assert.deepEqual(files.idempotency, {});
+});
+
+test('audit failure restores the previous revision of an existing record', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const auditPath = path.join(root, '.personal-vault', 'audit', 'events.jsonl');
+  await rm(auditPath, { force: true });
+  await mkdir(auditPath, { recursive: true });
+
+  const revisedText = '# Failed revision\nThis must be rolled back.';
+  const replacement = {
+    ...created,
+    revision: 2,
+    updatedAt: new Date().toISOString(),
+    title: 'Failed revision',
+    content: { ...created.content, text: revisedText, hash: hash(revisedText) },
+  };
+
+  await assert.rejects(
+    runtime.applyMutation(mutation({ type: 'record.revise', recordId: created.recordId, baseRevision: 1, record: replacement }, { id: 'B' })),
+    /EISDIR|illegal operation on a directory|Is a directory/i,
+  );
+
+  const restored = await runtime.readRecord(created.recordId);
+  assert.deepEqual(restored, created);
+  const files = await storeFiles(root);
+  assert.equal(files.records.length, 1);
+  assert.deepEqual(files.audit, []);
+  assert.equal(Object.keys(files.idempotency).length, 1, 'only the successful create mutation remains indexed');
+});
+
+test('audit failure rolls back the staged record write', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const auditPath = path.join(root, '.personal-vault', 'audit', 'events.jsonl');
+  await mkdir(auditPath, { recursive: true });
+
+  await assert.rejects(
+    runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' })),
+    /EISDIR|illegal operation on a directory|Is a directory/i,
+  );
+
+  const files = await storeFiles(root);
+  assert.deepEqual(files.records, [], 'record write must be removed when audit append fails');
+  assert.deepEqual(files.audit, []);
+  assert.deepEqual(files.idempotency, {});
+});
