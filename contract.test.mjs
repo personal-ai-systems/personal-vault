@@ -355,6 +355,69 @@ test('recovery rolls back asset.attach that never reached audit and removes new 
   assert.equal(Object.keys(files.idempotency).length, 1);
 });
 
+test('export includes records assets and audit and verifies clean', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+
+  const result = await runtime.exportVault({ includeAssets: true });
+  assert.equal(result.contractVersion, 'personal-vault/v1');
+  assert.equal(result.exportFormat, 'personal-vault-export/v1');
+  assert.deepEqual(result.manifest, {
+    recordCount: 1,
+    assetCount: 1,
+    auditCount: 2,
+    recordsHash: result.manifest.recordsHash,
+    assetsHash: result.manifest.assetsHash,
+    auditHash: result.manifest.auditHash,
+  });
+  assert.equal(result.records.length, 1);
+  assert.equal(result.assets.length, 1);
+  assert.equal(typeof result.assets[0].payloadBase64, 'string');
+  assert.equal(result.audit.length, 2);
+
+  const verification = await runtime.verifyExport(result.path);
+  assert.equal(verification.ok, true);
+  assert.deepEqual(verification.issues, []);
+});
+
+test('export without assets has empty asset list', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }));
+  const result = await runtime.exportVault({ includeAssets: false });
+  assert.deepEqual(result.assets, []);
+  assert.equal(result.manifest.assetCount, 0);
+  const verification = await runtime.verifyExport(result.path);
+  assert.equal(verification.ok, true);
+});
+
+test('verify detects a tampered record inside an export file', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }));
+  const result = await runtime.exportVault({ includeAssets: false });
+  const exportObject = JSON.parse(await readFile(result.path, 'utf8'));
+  exportObject.records[0].title = 'Tampered';
+  await writeFile(result.path, `${JSON.stringify(exportObject)}\n`, 'utf8');
+
+  const verification = await runtime.verifyExport(result.path);
+  assert.equal(verification.ok, false);
+  assert.ok(verification.issues.some((issue) => issue.includes('records hash mismatch')));
+});
+
+test('verify detects a tampered asset payload inside an export file', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+  const result = await runtime.exportVault({ includeAssets: true });
+  const exportObject = JSON.parse(await readFile(result.path, 'utf8'));
+  exportObject.assets[0].payloadBase64 = Buffer.from('tampered').toString('base64');
+  await writeFile(result.path, `${JSON.stringify(exportObject)}\n`, 'utf8');
+
+  const verification = await runtime.verifyExport(result.path);
+  assert.equal(verification.ok, false);
+  assert.ok(verification.issues.some((issue) => issue.includes('payload hash mismatch')));
+});
+
 test('audit failure restores the previous revision of an existing record', async (t) => {
   const { root, runtime } = await fixtureRuntime(t);
   const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;

@@ -25,6 +25,7 @@ const JOURNAL_PATH = path.join(STORE_ROOT, 'indexes', 'pending.jsonl');
 const ASSETS_ROOT = path.join(STORE_ROOT, 'assets');
 const ASSETS_META_ROOT = path.join(ASSETS_ROOT, 'meta');
 const ASSETS_PAYLOAD_ROOT = path.join(ASSETS_ROOT, 'payloads');
+const EXPORTS_ROOT = path.join(VAULT_ROOT, 'exports');
 
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const RECORD_ID_PATTERN = /^pvr_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -419,6 +420,79 @@ async function listAssets() {
   return Promise.all(entries.filter((entry) => entry.isFile() && entry.name.endsWith('.json')).map((entry) => readAsset(entry.name.slice(0, -5))));
 }
 
+function canonicalHash(value) {
+  return `sha256:${sha256(JSON.stringify(value))}`;
+}
+
+async function exportVault({ includeAssets = true } = {}) {
+  await ensureStore();
+  const records = await listRecords();
+  const audit = await readAuditEvents();
+  let assets = [];
+  if (includeAssets) {
+    assets = await Promise.all((await listAssets()).map(async (asset) => {
+      const payload = await readFile(assetPayloadPath(asset.contentHash));
+      return { ...asset, payloadBase64: payload.toString('base64') };
+    }));
+  }
+  const assetsManifest = assets.map(({ payloadBase64, ...meta }) => meta);
+  const manifest = {
+    recordCount: records.length,
+    assetCount: assets.length,
+    auditCount: audit.length,
+    recordsHash: canonicalHash(records),
+    assetsHash: canonicalHash(assetsManifest),
+    auditHash: canonicalHash(audit),
+  };
+  const exportedAt = new Date().toISOString();
+  const exportObject = {
+    contractVersion: CONTRACT_VERSION,
+    exportFormat: 'personal-vault-export/v1',
+    exportedAt,
+    manifest,
+    records,
+    assets,
+    audit,
+  };
+  await mkdir(EXPORTS_ROOT, { recursive: true });
+  const exportPath = path.join(EXPORTS_ROOT, `export-${exportedAt.replace(/[:.]/g, '-')}.json`);
+  await writeFile(exportPath, `${JSON.stringify(exportObject, null, 2)}\n`, 'utf8');
+  return { path: exportPath, ...exportObject };
+}
+
+async function verifyExport(filePath) {
+  const exportObject = JSON.parse(await readFile(filePath, 'utf8'));
+  const issues = [];
+  if (exportObject.contractVersion !== CONTRACT_VERSION) issues.push('export contractVersion mismatch');
+  if (exportObject.exportFormat !== 'personal-vault-export/v1') issues.push('export format mismatch');
+  const records = Array.isArray(exportObject.records) ? exportObject.records : [];
+  const assets = Array.isArray(exportObject.assets) ? exportObject.assets : [];
+  const audit = Array.isArray(exportObject.audit) ? exportObject.audit : [];
+  const assetsManifest = assets.map(({ payloadBase64, ...meta }) => meta);
+  if (exportObject.manifest?.recordsHash !== canonicalHash(records)) issues.push('records hash mismatch');
+  if (exportObject.manifest?.assetsHash !== canonicalHash(assetsManifest)) issues.push('assets hash mismatch');
+  if (exportObject.manifest?.auditHash !== canonicalHash(audit)) issues.push('audit hash mismatch');
+  if (exportObject.manifest?.recordCount !== records.length) issues.push('record count mismatch');
+  if (exportObject.manifest?.assetCount !== assets.length) issues.push('asset count mismatch');
+  if (exportObject.manifest?.auditCount !== audit.length) issues.push('audit count mismatch');
+  for (const asset of assets) {
+    try {
+      const payload = Buffer.from(asset.payloadBase64, 'base64');
+      if (asset.contentHash !== `sha256:${sha256(payload)}`) issues.push(`asset ${asset.assetId}: payload hash mismatch`);
+      if (asset.byteLength !== payload.length) issues.push(`asset ${asset.assetId}: payload byteLength mismatch`);
+    } catch (error) {
+      issues.push(`asset ${asset.assetId}: payload unreadable (${error.message})`);
+    }
+  }
+  return {
+    contractVersion: CONTRACT_VERSION,
+    checkedAt: new Date().toISOString(),
+    path: filePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
 async function checkIntegrity() {
   const issues = [];
   let records = [];
@@ -556,6 +630,14 @@ function createMcpServer() {
     const result = await checkIntegrity();
     return { content: [{ type: 'text', text: result.ok ? `Integrity ok (${result.recordCount} record(s), ${result.assetCount} asset(s), ${result.auditCount} audit event(s)).` : `Integrity issues: ${result.issues.length}` }], structuredContent: result };
   }));
+  server.registerTool('vault.export.create', { title: 'Create export', description: 'Create a portable export of records, assets and audit events with a verifiable manifest.', inputSchema: { includeAssets: z.boolean().optional() } }, withAuth(async ({ includeAssets = true }) => {
+    const exportResult = await exportVault({ includeAssets });
+    return { content: [{ type: 'text', text: `Export written to ${exportResult.path} (${exportResult.manifest.recordCount} record(s), ${exportResult.manifest.assetCount} asset(s), ${exportResult.manifest.auditCount} audit event(s)).` }], structuredContent: { path: exportResult.path, contractVersion: exportResult.contractVersion, exportFormat: exportResult.exportFormat, exportedAt: exportResult.exportedAt, manifest: exportResult.manifest } };
+  }));
+  server.registerTool('vault.export.verify', { title: 'Verify export', description: 'Verify a stored export file manifest and asset payload integrity without modifying the store.', inputSchema: { path: z.string().min(1) } }, withAuth(async ({ path: exportPath }) => {
+    const result = await verifyExport(exportPath);
+    return { content: [{ type: 'text', text: result.ok ? `Export verified: ${exportPath}` : `Export issues: ${result.issues.length}` }], structuredContent: result };
+  }));
   return server;
 }
 
@@ -593,6 +675,7 @@ export {
   applyMutation,
   checkIntegrity,
   contentSchema,
+  exportVault,
   fromMarkdown,
   listAssets,
   listChanges,
@@ -607,4 +690,5 @@ export {
   searchRecords,
   sha256,
   toMarkdown,
+  verifyExport,
 };

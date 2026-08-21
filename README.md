@@ -10,11 +10,12 @@ Personal Vault is a local-first storage engine for user-owned records, readable 
 - generic record creation, retrieval and search;
 - approved, auditable record mutations;
 - content-addressed binary asset attachment with readable metadata;
+- portable verified export of records, assets and audit history;
 - readable record representation and provenance;
 - authenticated Streamable HTTP MCP transport;
 - a versioned public contract: `personal-vault/v1` and `vault.*`.
 
-Export, backup, restore and synchronization are specified or planned work; they are not implemented by the current server.
+Backup, restore and synchronization are specified or planned work; they are not implemented by the current server.
 
 Personal Vault stores information but does not interpret it. Application-specific meaning, recommendations, planning and model behavior are outside this repository.
 
@@ -71,6 +72,9 @@ curl http://127.0.0.1:8787/status
 | `vault.records.get` | Read a record by stable ID. |
 | `vault.records.search` | Search record title and content. |
 | `vault.changes.list` | Read audit events after a cursor. |
+| `vault.export.create` | Create a portable verified export bundle. |
+| `vault.export.verify` | Verify a stored export file manifest and payloads. |
+| `vault.integrity.check` | Verify store integrity without modifying it. |
 | `vault.mutations.append` | Apply an approved generic mutation. |
 
 ## Repository layout
