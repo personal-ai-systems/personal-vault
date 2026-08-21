@@ -400,8 +400,10 @@ async function listRecords() {
 
 async function searchRecords(query, limit = 20) {
   const normalized = query.toLowerCase();
-  return (await listRecords()).flatMap((record) => {
-    const searchable = `${record.title || ''}\n${record.content.text}`;
+  const indexEntries = await readRebuiltSearchIndex();
+  const haystackEntries = indexEntries ?? (await listRecords()).map((record) => ({ ...record, text: record.content.text }));
+  return haystackEntries.flatMap((record) => {
+    const searchable = `${record.title || ''}\n${record.text}`;
     const haystack = searchable.toLowerCase();
     const index = haystack.indexOf(normalized);
     return index < 0 ? [] : [{ recordId: record.recordId, revision: record.revision, state: record.state, privacy: record.privacy, title: record.title || null, score: 1, snippet: searchable.slice(Math.max(0, index - 120), index + 280).replace(/\s+/g, ' ').trim(), matchedFields: record.title?.toLowerCase().includes(normalized) ? ['title'] : ['content'] }];
@@ -421,6 +423,44 @@ async function listAssets() {
   await ensureStore();
   const entries = await readdir(ASSETS_META_ROOT, { withFileTypes: true });
   return Promise.all(entries.filter((entry) => entry.isFile() && entry.name.endsWith('.json')).map((entry) => readAsset(entry.name.slice(0, -5))));
+}
+
+const SEARCH_INDEX_PATH = path.join(STORE_ROOT, 'indexes', 'search.json');
+const ASSETS_INDEX_PATH = path.join(STORE_ROOT, 'indexes', 'assets.json');
+
+async function rebuildIndexes() {
+  await ensureStore();
+  const records = await listRecords();
+  const assets = await listAssets();
+  const searchIndex = records.map((record) => ({
+    recordId: record.recordId,
+    revision: record.revision,
+    state: record.state,
+    privacy: record.privacy,
+    title: record.title || null,
+    text: record.content.text,
+    updatedAt: record.updatedAt,
+  }));
+  const assetsIndex = assets;
+  await writeFile(SEARCH_INDEX_PATH, `${JSON.stringify(searchIndex, null, 2)}\n`, 'utf8');
+  await writeFile(ASSETS_INDEX_PATH, `${JSON.stringify(assetsIndex, null, 2)}\n`, 'utf8');
+  return {
+    contractVersion: CONTRACT_VERSION,
+    rebuiltAt: new Date().toISOString(),
+    recordIndexEntries: searchIndex.length,
+    assetIndexEntries: assetsIndex.length,
+    searchIndexPath: SEARCH_INDEX_PATH,
+    assetsIndexPath: ASSETS_INDEX_PATH,
+  };
+}
+
+async function readRebuiltSearchIndex() {
+  try {
+    return JSON.parse(await readFile(SEARCH_INDEX_PATH, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 function canonicalHash(value) {
@@ -779,6 +819,10 @@ function createMcpServer() {
     const result = await restoreVault(backupPath, passphrase);
     return { content: [{ type: 'text', text: `Restored ${result.recordsRestored} record(s), ${result.assetsRestored} asset(s), ${result.auditRestored} audit event(s); skipped ${result.skipped}.` }], structuredContent: result };
   }));
+  server.registerTool('vault.indexes.rebuild', { title: 'Rebuild indexes', description: 'Recreate the search and asset indexes from canonical records and asset metadata.', inputSchema: {} }, withAuth(async () => {
+    const result = await rebuildIndexes();
+    return { content: [{ type: 'text', text: `Rebuilt ${result.recordIndexEntries} search and ${result.assetIndexEntries} asset index entr(ies).` }], structuredContent: result };
+  }));
   return server;
 }
 
@@ -826,6 +870,7 @@ export {
   mutationSchema,
   provenanceSchema,
   readAsset,
+  rebuildIndexes,
   readRecord,
   recoverPendingMutations,
   recordDraftSchema,

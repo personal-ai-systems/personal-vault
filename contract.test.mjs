@@ -497,6 +497,39 @@ test('backup restore is non-destructive and skips existing records and audit', a
   assert.equal(integrity.ok, true, JSON.stringify(integrity.issues));
 });
 
+test('rebuild creates search and asset indexes from canonical state', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1 }), { id: 'B' }));
+
+  const result = await runtime.rebuildIndexes();
+  assert.equal(result.recordIndexEntries, 1);
+  assert.equal(result.assetIndexEntries, 1);
+
+  const searchIndex = JSON.parse(await readFile(result.searchIndexPath, 'utf8'));
+  assert.equal(searchIndex.length, 1);
+  assert.equal(searchIndex[0].recordId, created.recordId);
+  assert.equal(searchIndex[0].text, created.content.text);
+  const assetsIndex = JSON.parse(await readFile(result.assetsIndexPath, 'utf8'));
+  assert.equal(assetsIndex.length, 1);
+  assert.equal(typeof assetsIndex[0].assetId, 'string');
+});
+
+test('rebuild restores a deleted search index and search still works', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Needle record', text: 'Needle body' }) }, { id: 'A' }))).record;
+  await runtime.rebuildIndexes();
+  const searchIndexPath = path.join(root, '.personal-vault', 'indexes', 'search.json');
+  await rm(searchIndexPath, { force: true });
+
+  assert.equal((await runtime.searchRecords('needle', 10)).length, 1, 'search falls back to records when index is missing');
+  await runtime.rebuildIndexes();
+  const rebuilt = JSON.parse(await readFile(searchIndexPath, 'utf8'));
+  assert.equal(rebuilt.length, 1);
+  assert.equal(rebuilt[0].recordId, created.recordId);
+  assert.equal((await runtime.searchRecords('needle', 10)).length, 1, 'search uses rebuilt index');
+});
+
 test('audit failure restores the previous revision of an existing record', async (t) => {
   const { root, runtime } = await fixtureRuntime(t);
   const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
