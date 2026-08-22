@@ -74,7 +74,7 @@ Audit events form an integrity chain. Each event carries `eventHash` (SHA-256 of
 | List changes | `vault.changes.list` |
 | Apply a generic mutation | `vault.mutations.append` |
 
-Validate, export and index rebuild operations are reserved until their fixture-based acceptance tests are added.
+Validate, export and index rebuild operations are covered by fixture-based acceptance tests: `vault.integrity.check`, `vault.export.create`, `vault.export.verify` and `vault.indexes.rebuild`.
 
 ## Deferred work
 
