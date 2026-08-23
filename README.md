@@ -97,6 +97,9 @@ curl http://127.0.0.1:8787/status
 - [Development guide](AGENTS.md)
 - [Personal Vault Contract v1](docs/personal-vault-contract-v1.md)
 - [Machine-readable schema](contracts/v1/personal-vault.schema.json)
+- [Synchronization and concurrency policy draft](docs/personal-vault-sync-policy-draft.md)
+- [Retention and permanent purge policy draft](docs/personal-vault-retention-policy-draft.md)
+- [Durable authorization policy draft](docs/personal-vault-durable-auth-policy-draft.md)
 
 ## Development
 
