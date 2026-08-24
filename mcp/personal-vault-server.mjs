@@ -11,6 +11,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 
 const VAULT_ROOT = path.resolve(process.env.PERSONAL_VAULT_ROOT || path.join(process.env.HOME || '', 'personal-vault'));
+const HOST = process.env.MCP_HOST || '127.0.0.1';
 const PORT = Number(process.env.MCP_PORT || process.env.PORT || 8787);
 const MCP_PATH = '/mcp';
 const CONTRACT_VERSION = 'personal-vault/v1';
@@ -800,7 +801,7 @@ function getHeader(headers, name) {
 
 function getPublicBaseUrl(req) {
   if (MCP_PUBLIC_BASE_URL) return MCP_PUBLIC_BASE_URL;
-  const host = getHeader(req.headers, 'host') || `127.0.0.1:${PORT}`;
+  const host = getHeader(req.headers, 'host') || `${HOST}:${PORT}`;
   const forwardedProto = getHeader(req.headers, 'x-forwarded-proto');
   const protocol = forwardedProto || (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
   return `${protocol}://${host}`;
@@ -900,7 +901,7 @@ function createMcpServer() {
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'GET' && url.pathname === '/') return void res.writeHead(200, { 'content-type': 'text/plain' }).end('Personal Vault MCP server');
-  if (req.method === 'GET' && url.pathname === '/status') return void res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ status: 'ok', server: 'personal-vault', contractVersion: CONTRACT_VERSION, mcpEndpoint: `${getPublicBaseUrl(req)}${MCP_PATH}`, authentication: GOOGLE_AUTH_ENABLED ? 'oauth-required' : 'disabled' }));
+  if (req.method === 'GET' && url.pathname === '/status') return void res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ status: 'ok', server: 'personal-vault', contractVersion: CONTRACT_VERSION, mcpEndpoint: `${getPublicBaseUrl(req)}${MCP_PATH}`, bind: HOST, authentication: GOOGLE_AUTH_ENABLED ? 'oauth-required' : 'disabled' }));
   if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ resource: getPublicBaseUrl(req), authorization_servers: ['https://accounts.google.com'], scopes_supported: ['openid', 'email', 'profile'] }));
   if (req.method === 'OPTIONS' && url.pathname === MCP_PATH) return void res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, mcp-session-id, authorization', 'Access-Control-Expose-Headers': 'Mcp-Session-Id' }).end();
   if (url.pathname !== MCP_PATH || !['POST', 'GET', 'DELETE'].includes(req.method || '')) return void res.writeHead(404).end('Not found');
@@ -920,7 +921,7 @@ const httpServer = createServer(async (req, res) => {
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   recoverPendingMutations()
-    .then(() => httpServer.listen(PORT, () => console.log(`Personal Vault MCP server listening on http://localhost:${PORT}${MCP_PATH}`)))
+    .then(() => httpServer.listen(PORT, HOST, () => console.log(`Personal Vault MCP server listening on http://${HOST}:${PORT}${MCP_PATH}`)))
     .catch((error) => {
       console.error('Personal Vault recovery failed:', error);
       process.exitCode = 1;
