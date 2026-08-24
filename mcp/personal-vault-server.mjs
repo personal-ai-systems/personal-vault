@@ -2,7 +2,7 @@
 
 import { createServer } from 'node:http';
 import { createHash, createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCallback } from 'node:crypto';
-import { promisify } from 'node:util';
+import { promisify, isDeepStrictEqual } from 'node:util';
 import { mkdir, readFile, writeFile, appendFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -112,6 +112,14 @@ async function writeAssetMeta(asset) {
 
 async function readAsset(assetId) {
   return JSON.parse(await readFile(assetMetaPath(assetId), 'utf8'));
+}
+
+async function getAsset(assetId) {
+  const asset = await readAsset(assetId);
+  const payload = await readFile(assetPayloadPath(asset.contentHash));
+  if (asset.byteLength !== payload.length) throw new Error('Asset byteLength does not match stored payload.');
+  if (asset.contentHash !== `sha256:${sha256(payload)}`) throw new Error('Asset content hash does not match stored payload.');
+  return { asset, payload: { encoding: 'base64', dataBase64: payload.toString('base64') } };
 }
 
 function toMarkdown(record) {
@@ -402,6 +410,44 @@ async function listRecords() {
   await ensureStore();
   const entries = await readdir(RECORDS_ROOT, { withFileTypes: true });
   return Promise.all(entries.filter((entry) => entry.isFile() && entry.name.endsWith('.md')).map((entry) => readRecord(entry.name.slice(0, -3))));
+}
+
+function encodeRecordCursor(after) {
+  return `v1:${Buffer.from(JSON.stringify({ kind: 'records', after }), 'utf8').toString('base64url')}`;
+}
+
+function decodeRecordCursor(cursor) {
+  if (!cursor) return null;
+  if (!/^v1:[A-Za-z0-9_-]{1,512}$/.test(cursor)) throw new Error('Invalid record cursor.');
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor.slice(3), 'base64url').toString('utf8'));
+    if (decoded.kind !== 'records' || !RECORD_ID_PATTERN.test(decoded.after)) throw new Error();
+    return decoded.after;
+  } catch {
+    throw new Error('Invalid record cursor.');
+  }
+}
+
+function matchesExactMetadata(metadata, filters) {
+  return Object.entries(filters).every(([key, expected]) => Object.hasOwn(metadata, key) && isDeepStrictEqual(metadata[key], expected));
+}
+
+async function listRecordsPage({ cursor, limit = 50, state, metadata = {} } = {}) {
+  assertMetadata(metadata);
+  const after = decodeRecordCursor(cursor);
+  const filtered = (await listRecords())
+    .filter((record) => !state || record.state === state)
+    .filter((record) => matchesExactMetadata(record.metadata, metadata))
+    .sort((left, right) => left.recordId.localeCompare(right.recordId))
+    .filter((record) => !after || record.recordId > after);
+  const records = filtered.slice(0, limit);
+  const lastRecordId = records.length ? records.at(-1).recordId : after;
+  return {
+    contractVersion: CONTRACT_VERSION,
+    records,
+    nextCursor: encodeRecordCursor(lastRecordId ?? 'pvr_00000000000000000000000000'),
+    hasMore: records.length < filtered.length,
+  };
 }
 
 async function searchRecords(query, limit = 20) {
@@ -794,6 +840,10 @@ function createMcpServer() {
     const result = await applyMutation(mutation);
     return { content: [{ type: 'text', text: `Applied ${result.auditEvent.action} to ${result.record.recordId}.` }], structuredContent: result };
   }));
+  server.registerTool('vault.assets.get', { title: 'Get asset', description: 'Read generic asset metadata and its verified payload by stable asset identifier.', inputSchema: { assetId: z.string().regex(ASSET_ID_PATTERN) } }, withAuth(async ({ assetId }) => {
+    const result = await getAsset(assetId);
+    return { content: [{ type: 'text', text: `Returned asset ${assetId} (${result.asset.byteLength} byte(s)).` }], structuredContent: result };
+  }));
   server.registerTool('vault.assets.attach', { title: 'Attach asset', description: 'Attach a content-addressed asset to a record from an approved asset.attach mutation.', inputSchema: { mutation: z.unknown() } }, withAuth(async ({ mutation }) => {
     const result = await applyMutation(mutation);
     if (result.auditEvent.action !== 'asset.attached') throw new Error('vault.assets.attach accepts only asset.attach mutations.');
@@ -804,9 +854,13 @@ function createMcpServer() {
     if (result.auditEvent.action !== 'record.created') throw new Error('vault.records.create accepts only record.create mutations.');
     return { content: [{ type: 'text', text: `Created record ${result.record.recordId}.` }], structuredContent: result };
   }));
-  server.registerTool('vault.records.get', { title: 'Get record', description: 'Read a generic record by stable identifier.', inputSchema: { recordId: z.string().min(1) } }, withAuth(async ({ recordId }) => {
+  server.registerTool('vault.records.get', { title: 'Get record', description: 'Read a generic record by stable identifier.', inputSchema: { recordId: z.string().regex(RECORD_ID_PATTERN) } }, withAuth(async ({ recordId }) => {
     const record = await readRecord(recordId);
     return { content: [{ type: 'text', text: record.content.text }], structuredContent: { record } };
+  }));
+  server.registerTool('vault.records.list', { title: 'List records', description: 'List generic records with opaque pagination and exact lifecycle/metadata filters.', inputSchema: { cursor: z.string().regex(/^v1:[A-Za-z0-9_-]{1,512}$/).optional(), limit: z.number().int().min(1).max(100).optional(), state: z.enum(['active', 'archived', 'trashed']).optional(), metadata: z.record(z.string(), z.unknown()).optional() } }, withAuth(async ({ cursor, limit = 50, state, metadata = {} }) => {
+    const result = await listRecordsPage({ cursor, limit, state, metadata });
+    return { content: [{ type: 'text', text: `Returned ${result.records.length} record(s).` }], structuredContent: result };
   }));
   server.registerTool('vault.records.search', { title: 'Search records', description: 'Search generic record title and content without domain interpretation.', inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(100).optional() } }, withAuth(async ({ query, limit = 20 }) => {
     const matches = await searchRecords(query, limit);
@@ -881,9 +935,11 @@ export {
   decryptBackup,
   exportVault,
   fromMarkdown,
+  getAsset,
   listAssets,
   listChanges,
   listRecords,
+  listRecordsPage,
   mutationSchema,
   provenanceSchema,
   readAsset,

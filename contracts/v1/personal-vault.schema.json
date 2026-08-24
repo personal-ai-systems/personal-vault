@@ -638,6 +638,41 @@
         }
       }
     },
+    "recordList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "records", "nextCursor", "hasMore"],
+      "properties": {
+        "contractVersion": {
+          "$ref": "#/$defs/contractVersion"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        },
+        "nextCursor": {
+          "$ref": "#/$defs/opaqueCursor"
+        },
+        "hasMore": {
+          "type": "boolean"
+        }
+      }
+    },
+    "assetRetrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset", "payload"],
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "payload": {
+          "$ref": "#/$defs/assetPayload"
+        }
+      }
+    },
     "changeFeed": {
       "type": "object",
       "additionalProperties": false,

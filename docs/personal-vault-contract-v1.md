@@ -55,6 +55,12 @@ V1 operations are:
 
 The service rejects unsupported versions, expired approval, unauthorized actors, revision conflicts, integrity failures and conflicting reuse of an idempotency key.
 
+## Record listing and asset retrieval
+
+`vault.records.list` provides stable-ID, path-free enumeration for external clients. Results are sorted by `recordId`, paginated with opaque cursors, and may be filtered by lifecycle `state` plus exact namespaced metadata values. Metadata values remain opaque: objects, arrays and scalars must match exactly; the Vault does not interpret them.
+
+`vault.assets.get` accepts a stable `assetId` and returns contract-shaped asset metadata plus a base64 payload. The service verifies stored `byteLength` and `contentHash` before returning bytes.
+
 ## Audit and change feed
 
 Each accepted mutation creates one audit event with an event ID, sequence, action, actor, resource, resulting revision and provenance.
@@ -69,7 +75,9 @@ Audit events form an integrity chain. Each event carries `eventHash` (SHA-256 of
 | --- | --- |
 | Create record | `vault.records.create` |
 | Attach asset | `vault.assets.attach` |
+| Retrieve asset | `vault.assets.get` |
 | Read record | `vault.records.get` |
+| List records | `vault.records.list` |
 | Search records | `vault.records.search` |
 | List changes | `vault.changes.list` |
 | Apply a generic mutation | `vault.mutations.append` |

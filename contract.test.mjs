@@ -191,6 +191,69 @@ test('search returns contract-shaped title and content matches with limits', asy
   assert.ok(allMatches.some((match) => match.matchedFields.includes('content')));
 });
 
+test('records.list paginates by stable recordId with opaque cursors', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'One' }) }, { id: 'A' }));
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Two' }) }, { id: 'B' }));
+  await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Three' }) }, { id: 'C' }));
+
+  const first = await runtime.listRecordsPage({ limit: 2 });
+  assert.equal(first.contractVersion, 'personal-vault/v1');
+  assert.equal(first.records.length, 2);
+  assert.equal(first.hasMore, true);
+  assert.match(first.nextCursor, /^v1:[A-Za-z0-9_-]+$/);
+  assert.ok(first.records[0].recordId < first.records[1].recordId);
+
+  const second = await runtime.listRecordsPage({ cursor: first.nextCursor, limit: 2 });
+  assert.equal(second.records.length, 1);
+  assert.equal(second.hasMore, false);
+  assert.notEqual(second.records[0].recordId, first.records[1].recordId);
+  const empty = await runtime.listRecordsPage({ cursor: second.nextCursor, limit: 2 });
+  assert.deepEqual(empty.records, []);
+  assert.equal(empty.hasMore, false);
+  await assert.rejects(runtime.listRecordsPage({ cursor: 'v1:not-a-valid-record-cursor' }), /Invalid record cursor/);
+});
+
+test('records.list applies lifecycle and exact opaque namespaced-metadata filters', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const active = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Active', metadata: { 'client.kind': 'note', 'client.flags': { reviewed: true } } }) }, { id: 'A' }))).record;
+  const archived = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'Archived', metadata: { 'client.kind': 'note', 'client.flags': { reviewed: false } } }) }, { id: 'B' }))).record;
+  await runtime.applyMutation(mutation({ type: 'record.archive', recordId: archived.recordId, baseRevision: 1 }, { id: 'C' }));
+
+  const activeNotes = await runtime.listRecordsPage({ state: 'active', metadata: { 'client.kind': 'note' } });
+  assert.deepEqual(activeNotes.records.map((record) => record.recordId), [active.recordId]);
+  const exactNested = await runtime.listRecordsPage({ metadata: { 'client.flags': { reviewed: false } } });
+  assert.deepEqual(exactNested.records.map((record) => record.recordId), [archived.recordId]);
+  const keyOrderIsOpaque = await runtime.listRecordsPage({ metadata: { 'client.flags': { reviewed: true } } });
+  assert.deepEqual(keyOrderIsOpaque.records.map((record) => record.recordId), [active.recordId]);
+  const notPartial = await runtime.listRecordsPage({ metadata: { 'client.flags': { reviewed: true, extra: true } } });
+  assert.deepEqual(notPartial.records, []);
+  await assert.rejects(runtime.listRecordsPage({ metadata: { unnamespaced: true } }), /Metadata key must be namespaced/);
+});
+
+test('assets.get returns metadata and transport-safe verified payload', async (t) => {
+  const { runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('retrievable asset');
+  const attached = await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1, bytes }), { id: 'B' }));
+
+  const result = await runtime.getAsset(attached.asset.assetId);
+  assert.deepEqual(result.asset, attached.asset);
+  assert.deepEqual(result.payload, { encoding: 'base64', dataBase64: bytes.toString('base64') });
+  assert.deepEqual(Buffer.from(result.payload.dataBase64, 'base64'), bytes);
+  await assert.rejects(runtime.getAsset('not-an-asset-id'), /Invalid assetId/);
+});
+
+test('assets.get rejects a stored payload whose hash no longer matches', async (t) => {
+  const { root, runtime } = await fixtureRuntime(t);
+  const created = (await runtime.applyMutation(mutation({ type: 'record.create', record: draft() }, { id: 'A' }))).record;
+  const bytes = Buffer.from('retrievable asset');
+  const attached = await runtime.applyMutation(mutation(assetAttach({ recordId: created.recordId, baseRevision: 1, bytes }), { id: 'B' }));
+  const payloadPath = path.join(root, '.personal-vault', 'assets', 'payloads', attached.asset.contentHash.slice('sha256:'.length) + '.bin');
+  await writeFile(payloadPath, Buffer.from('tampered payload!'));
+  await assert.rejects(runtime.getAsset(attached.asset.assetId), /content hash/);
+});
+
 test('change feed paginates with opaque cursors and accurate hasMore', async (t) => {
   const { runtime } = await fixtureRuntime(t);
   await runtime.applyMutation(mutation({ type: 'record.create', record: draft({ title: 'One' }) }, { id: 'A' }));
