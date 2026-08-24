@@ -93,7 +93,7 @@ Recommended v1 scope set:
 | `vault.admin` | indexes.rebuild, credential create/revoke/rotate |
 
 Scopes are checked by tool registration wrappers, not by application-specific
-record meaning. This preserves the neutral Core boundary.
+record meaning. This preserves the neutral Personal Vault boundary.
 
 ### Actor binding
 

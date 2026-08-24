@@ -44,7 +44,9 @@ Do not introduce public methods that encode an application's meaning. Keep recor
 
 ## Development workflow
 
-1. Read the current instructions, contract and repository state.
+The current Personal Assistant integration handoff is [`docs/personal-vault-api-migration-update.md`](docs/personal-vault-api-migration-update.md). It defines the approved direction: Personal Assistant consumes the neutral `personal-vault/v1` MCP/API and must not directly access the Vault filesystem. The live cutover/rollback procedure is [`docs/assistant-mcp-cutover-runbook.md`](docs/assistant-mcp-cutover-runbook.md).
+
+1. Read the current instructions, contract, integration handoff and repository state.
 2. Select one bounded, reversible change.
 3. Implement it with fixture-based checks.
 4. Report the exact diff and remaining risk in the canonical development task.
