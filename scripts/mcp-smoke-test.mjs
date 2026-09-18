@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -44,8 +44,32 @@ try {
   assert.equal((await client.callTool({ name: 'vault.files.search', arguments: { query: 'readable' } })).structuredContent.matches[0].path, 'raw/2026/08/hello.md');
   await client.callTool({ name: 'vault.files.archive', arguments: { path: 'raw/2026/08/hello.md' } });
   const archived = `archive/${new Date().toISOString().slice(0, 10)}/raw/2026/08/hello.md`;
+  const archivedAsset = `archive/${new Date().toISOString().slice(0, 10)}/raw/2026/08/hello.assets/sample.bin`;
+  assert.equal((await readFile(path.join(fixture, archivedAsset), 'utf8')), 'sample');
   await client.callTool({ name: 'vault.files.restore', arguments: { path: archived } });
   assert.equal((await readFile(path.join(fixture, 'raw/2026/08/hello.md'), 'utf8')).includes('Hello'), true);
+  assert.equal((await readFile(path.join(fixture, 'raw/2026/08/hello.assets/sample.bin'), 'utf8')), 'sample');
+  const call = (name, args) => client.callTool({ name: `vault.files.${name}`, arguments: args });
+  assert.equal((await call('create', { path: 'raw/2026/08/hello.md', content: 'duplicate' })).isError, true);
+  assert.equal((await call('update', { path: 'missing.md', content: 'missing' })).isError, true);
+  assert.equal((await call('attach', { markdownPath: 'raw/2026/08/hello.md', name: 'sample.bin', dataBase64: Buffer.from('different').toString('base64') })).isError, true);
+  assert.equal(await readFile(path.join(fixture, 'raw/2026/08/hello.assets/sample.bin'), 'utf8'), 'sample');
+  await call('update', { path: 'raw/2026/08/hello.md', content: '# Edited' });
+  assert.equal(await readFile(path.join(fixture, 'raw/2026/08/hello.md'), 'utf8'), '# Edited');
+  const outside = await mkdtemp(path.join(tmpdir(), 'vault-outside-'));
+  try {
+    await writeFile(path.join(outside, 'outside.md'), 'outside fixture');
+    await symlink(outside, path.join(fixture, 'escape'));
+    for (const [name, args] of [
+      ['read', { path: 'escape/outside.md' }],
+      ['create', { path: 'escape/new.md', content: 'bad' }],
+      ['update', { path: 'escape/outside.md', content: 'bad' }],
+      ['archive', { path: 'escape/outside.md' }],
+      ['list', { path: 'escape' }],
+    ]) assert.equal((await call(name,args)).isError, true, name);
+    assert.equal(await readFile(path.join(outside, 'outside.md'), 'utf8'), 'outside fixture');
+    assert.equal((await call('search', { query: 'outside fixture' })).structuredContent.matches.length, 0);
+  } finally { await rm(outside, { recursive: true, force: true }); }
   await client.close();
   console.log('Personal Vault smoke test passed: readable files, search, attachments, archive and restore.');
 } finally {

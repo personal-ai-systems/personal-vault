@@ -3,11 +3,12 @@
 import { createServer } from 'node:http';
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 
-const VAULT_ROOT = path.resolve(process.env.PERSONAL_VAULT_ROOT || path.join(process.env.HOME || '', 'personal-vault'));
+const VAULT_ROOT = realpathSync(path.resolve(process.env.PERSONAL_VAULT_ROOT || path.join(process.env.HOME || '', 'personal-vault')));
 const HOST = process.env.MCP_HOST || '127.0.0.1';
 const PORT = Number(process.env.MCP_PORT || process.env.PORT || 8788);
 const MCP_PATH = '/mcp';
@@ -22,6 +23,13 @@ function cleanPath(input = '') {
 function fullPath(relativePath = '') {
   const target = path.resolve(VAULT_ROOT, cleanPath(relativePath));
   if (target !== VAULT_ROOT && !target.startsWith(`${VAULT_ROOT}${path.sep}`)) throw new Error('Path must stay inside the Vault.');
+  // Refuse symlinks in every existing component, including the selected root.
+  let cursor = path.parse(target).root;
+  for (const part of target.slice(cursor.length).split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, part);
+    try { if (lstatSync(cursor).isSymbolicLink()) throw new Error('Symbolic links are not supported inside the Vault path.'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   return target;
 }
 
@@ -48,7 +56,7 @@ async function list(relative = '', recursive = false, limit = 200) {
   async function walk(directory) {
     if (entries.length >= limit) return;
     for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (!visibleName(entry.name) || entries.length >= limit) continue;
+      if (entry.isSymbolicLink() || !visibleName(entry.name) || entries.length >= limit) continue;
       const candidate = path.join(directory, entry.name);
       entries.push(await info(candidate));
       if (recursive && entry.isDirectory()) await walk(candidate);
@@ -59,7 +67,7 @@ async function list(relative = '', recursive = false, limit = 200) {
 }
 
 async function readText(relative) {
-  if (!textFile(relative)) throw new Error('Use vault.files.read_asset for a binary file.');
+  if (!textFile(relative)) throw new Error('Only readable text files can be opened with this tool.');
   const target = fullPath(relative);
   return { ...(await info(target)), content: await readFile(target, 'utf8') };
 }
@@ -68,11 +76,18 @@ async function writeText(relative, content, overwrite = false) {
   if (!textFile(relative)) throw new Error('Personal Vault writes readable text files only.');
   const target = fullPath(relative);
   await mkdir(path.dirname(target), { recursive: true });
-  if (!overwrite) {
-    const exists = await readFile(target).then(() => true).catch((error) => error.code === 'ENOENT' ? false : Promise.reject(error));
-    if (exists) throw new Error('A file already exists at this path. Use vault.files.update to change it.');
+  if (overwrite) {
+    // r+ refuses to create an absent file. Preserve inode and do not truncate until opened.
+    const { open } = await import('node:fs/promises');
+    const handle = await open(target, 'r+');
+    try { await handle.writeFile(content, 'utf8'); await handle.truncate(Buffer.byteLength(content)); }
+    finally { await handle.close(); }
+  } else {
+    await writeFile(target, content, { encoding: 'utf8', flag: 'wx' }).catch(error => {
+      if (error.code === 'EEXIST') throw new Error('A file already exists at this path. Use vault.files.update to change it.');
+      throw error;
+    });
   }
-  await writeFile(target, content, 'utf8');
   return readText(relative);
 }
 
@@ -81,26 +96,41 @@ function archivePath(relative) {
   return `archive/${date}/${cleanPath(relative)}`;
 }
 
-async function archive(relative) {
-  const source = fullPath(relative);
-  const destinationRelative = archivePath(relative);
+async function exists(target) {
+  return stat(target).then(() => true).catch((error) => error.code === 'ENOENT' ? false : Promise.reject(error));
+}
+
+async function moveNoteWithAssets(sourceRelative, destinationRelative) {
+  const source = fullPath(sourceRelative);
   const destination = fullPath(destinationRelative);
+  const sourceAssetsRelative = path.extname(sourceRelative).toLowerCase() === '.md' ? `${sourceRelative.slice(0, -3)}.assets` : null;
+  const destinationAssetsRelative = sourceAssetsRelative ? `${destinationRelative.slice(0, -3)}.assets` : null;
+  const sourceAssets = sourceAssetsRelative ? fullPath(sourceAssetsRelative) : null;
+  const destinationAssets = destinationAssetsRelative ? fullPath(destinationAssetsRelative) : null;
+  const hasAssets = sourceAssets ? await exists(sourceAssets) : false;
+  if (await exists(destination) || (hasAssets && await exists(destinationAssets))) throw new Error('A file already exists at the destination.');
   await mkdir(path.dirname(destination), { recursive: true });
+  if (hasAssets) await mkdir(path.dirname(destinationAssets), { recursive: true });
   await rename(source, destination);
-  return { from: cleanPath(relative), to: destinationRelative };
+  try {
+    if (hasAssets) await rename(sourceAssets, destinationAssets);
+  } catch (error) {
+    await rename(destination, source).catch(() => {});
+    throw error;
+  }
+  return { from: sourceRelative, to: destinationRelative, ...(hasAssets ? { assetsFrom: sourceAssetsRelative, assetsTo: destinationAssetsRelative } : {}) };
+}
+
+async function archive(relative) {
+  const sourceRelative = cleanPath(relative);
+  return moveNoteWithAssets(sourceRelative, archivePath(sourceRelative));
 }
 
 async function restore(relative) {
   const clean = cleanPath(relative);
   const match = /^archive\/\d{4}-\d{2}-\d{2}\/(.+)$/.exec(clean);
   if (!match) throw new Error('Choose a file under archive/YYYY-MM-DD to restore.');
-  const source = fullPath(clean);
-  const destination = fullPath(match[1]);
-  const exists = await readFile(destination).then(() => true).catch((error) => error.code === 'ENOENT' ? false : Promise.reject(error));
-  if (exists) throw new Error('A file already exists at the original path.');
-  await mkdir(path.dirname(destination), { recursive: true });
-  await rename(source, destination);
-  return { from: clean, to: match[1] };
+  return moveNoteWithAssets(clean, match[1]);
 }
 
 async function search(query, limit = 20) {
@@ -108,7 +138,7 @@ async function search(query, limit = 20) {
   async function walk(directory) {
     if (matches.length >= limit) return;
     for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (!visibleName(entry.name) || matches.length >= limit) continue;
+      if (entry.isSymbolicLink() || !visibleName(entry.name) || matches.length >= limit) continue;
       const candidate = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(candidate);
       else {
@@ -142,7 +172,7 @@ async function attach(markdownPath, name, dataBase64) {
   const assetFile = fullPath(assetRelative);
   await mkdir(path.dirname(assetFile), { recursive: true });
   await writeFile(assetFile, bytes, { flag: 'wx' }).catch((error) => {
-    if (error.code === 'EEXIST') return;
+    if (error.code === 'EEXIST') throw new Error('An attachment already exists with this name. Choose another name.');
     throw error;
   });
   return { markdownPath: source, assetPath: assetRelative, sizeBytes: bytes.length };
@@ -162,6 +192,7 @@ function createVaultServer() {
 }
 
 const httpServer = createServer(async (req, res) => {
+  if (process.env.PERSONAL_VAULT_TOKEN && req.headers.authorization !== `Bearer ${process.env.PERSONAL_VAULT_TOKEN}`) return void res.writeHead(401).end('Unauthorized');
   if (!req.url) return void res.writeHead(400).end('Missing URL');
   const url = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
   if (req.method === 'GET' && url.pathname === '/status') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ status: 'ok', server: 'personal-vault', version: '0.2.0', root: VAULT_ROOT, bind: HOST, mcpEndpoint: `http://${HOST}:${PORT}${MCP_PATH}` }));
