@@ -32,30 +32,42 @@ async function waitForServer() {
 
 try {
   await waitForServer();
+  const base = `http://${host}:${port}`;
+
+  // /status advertises the one MCP endpoint this product serves.
+  const status = await (await fetch(`${base}/status`)).json();
+  assert.equal(status.mcpEndpoint, `${base}/mcp`);
+
   const client = new Client({ name: 'personal-vault-smoke', version: '1.0.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`http://${host}:${port}/mcp`)));
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
+  const captureTools = ['apply_capture_action', 'capture_asset', 'capture_note', 'get_capture_review', 'get_today_plan', 'search_vault'];
+  const fileTools = ['vault_files_archive', 'vault_files_attach', 'vault_files_create', 'vault_files_list', 'vault_files_read', 'vault_files_restore', 'vault_files_search', 'vault_files_update'];
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), ['vault.files.archive', 'vault.files.attach', 'vault.files.create', 'vault.files.list', 'vault.files.read', 'vault.files.restore', 'vault.files.search', 'vault.files.update']);
-  const created = await client.callTool({ name: 'vault.files.create', arguments: { path: 'raw/2026/08/hello.md', content: '# Hello\n\nA readable note.\n' } });
+  assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [...captureTools, ...fileTools].sort());
+  for (const tool of tools.tools) assert.equal(tool.name.includes('.'), false, `${tool.name} must not contain a dot`);
+
+  const call = (name, args) => client.callTool({ name: `vault_files_${name}`, arguments: args });
+  const created = await call('create', { path: 'raw/2026/08/hello.md', content: '# Hello\n\nA readable note.\n' });
   assert.equal(created.structuredContent.path, 'raw/2026/08/hello.md');
-  assert.equal((await client.callTool({ name: 'vault.files.read', arguments: { path: 'raw/2026/08/hello.md' } })).structuredContent.content.includes('readable note'), true);
-  const attached = await client.callTool({ name: 'vault.files.attach', arguments: { markdownPath: 'raw/2026/08/hello.md', name: 'sample.bin', dataBase64: Buffer.from('sample').toString('base64') } });
+  assert.equal((await call('read', { path: 'raw/2026/08/hello.md' })).structuredContent.content.includes('readable note'), true);
+  const attached = await call('attach', { markdownPath: 'raw/2026/08/hello.md', name: 'sample.bin', dataBase64: Buffer.from('sample').toString('base64') });
   assert.equal(attached.structuredContent.assetPath, 'raw/2026/08/hello.assets/sample.bin');
-  assert.equal((await client.callTool({ name: 'vault.files.search', arguments: { query: 'readable' } })).structuredContent.matches[0].path, 'raw/2026/08/hello.md');
-  await client.callTool({ name: 'vault.files.archive', arguments: { path: 'raw/2026/08/hello.md' } });
+  assert.equal((await call('search', { query: 'readable' })).structuredContent.matches[0].path, 'raw/2026/08/hello.md');
+  await call('archive', { path: 'raw/2026/08/hello.md' });
   const archived = `archive/${new Date().toISOString().slice(0, 10)}/raw/2026/08/hello.md`;
   const archivedAsset = `archive/${new Date().toISOString().slice(0, 10)}/raw/2026/08/hello.assets/sample.bin`;
   assert.equal((await readFile(path.join(fixture, archivedAsset), 'utf8')), 'sample');
-  await client.callTool({ name: 'vault.files.restore', arguments: { path: archived } });
+  await call('restore', { path: archived });
   assert.equal((await readFile(path.join(fixture, 'raw/2026/08/hello.md'), 'utf8')).includes('Hello'), true);
   assert.equal((await readFile(path.join(fixture, 'raw/2026/08/hello.assets/sample.bin'), 'utf8')), 'sample');
-  const call = (name, args) => client.callTool({ name: `vault.files.${name}`, arguments: args });
+
   assert.equal((await call('create', { path: 'raw/2026/08/hello.md', content: 'duplicate' })).isError, true);
   assert.equal((await call('update', { path: 'missing.md', content: 'missing' })).isError, true);
   assert.equal((await call('attach', { markdownPath: 'raw/2026/08/hello.md', name: 'sample.bin', dataBase64: Buffer.from('different').toString('base64') })).isError, true);
   assert.equal(await readFile(path.join(fixture, 'raw/2026/08/hello.assets/sample.bin'), 'utf8'), 'sample');
   await call('update', { path: 'raw/2026/08/hello.md', content: '# Edited' });
   assert.equal(await readFile(path.join(fixture, 'raw/2026/08/hello.md'), 'utf8'), '# Edited');
+
   const outside = await mkdtemp(path.join(tmpdir(), 'vault-outside-'));
   try {
     await writeFile(path.join(outside, 'outside.md'), 'outside fixture');
@@ -66,12 +78,12 @@ try {
       ['update', { path: 'escape/outside.md', content: 'bad' }],
       ['archive', { path: 'escape/outside.md' }],
       ['list', { path: 'escape' }],
-    ]) assert.equal((await call(name,args)).isError, true, name);
+    ]) assert.equal((await call(name, args)).isError, true, name);
     assert.equal(await readFile(path.join(outside, 'outside.md'), 'utf8'), 'outside fixture');
     assert.equal((await call('search', { query: 'outside fixture' })).structuredContent.matches.length, 0);
   } finally { await rm(outside, { recursive: true, force: true }); }
   await client.close();
-  console.log('Personal Vault smoke test passed: readable files, search, attachments, archive and restore.');
+  console.log('Personal Vault smoke test passed: one /mcp endpoint, underscore tool names, readable files, search, attachments, archive and restore.');
 } finally {
   child.kill('SIGTERM');
   await rm(fixture, { recursive: true, force: true });

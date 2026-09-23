@@ -27,7 +27,7 @@ MCP_PORT=8788 \
 npm run mcp:vault
 ```
 
-The local endpoint is `http://127.0.0.1:8788/mcp`.
+The local endpoint is `http://127.0.0.1:8788/mcp`. It is the only MCP endpoint. Tool names use underscores (for example `vault_files_read`) because some model providers reject dots in function names.
 
 ## What the API can do
 

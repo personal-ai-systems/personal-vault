@@ -67,7 +67,7 @@ mcp/personal-vault-server.mjs
 scripts/mcp-smoke-test.mjs
 ```
 
-They are reported to make archive and restore carry a note’s visible `.assets` folder with it. Treat that as a proposal until you inspect the diff and run its test against a temporary Vault folder. Do not overwrite, discard, or mix these changes with unrelated work.
+The diff is larger than an archive/restore tweak: it merges the retired capture facade into this server (capture tools, auth, `.assets` archiving), and it consolidates the MCP surface onto a single endpoint, `/mcp`, with underscore tool names. Any caller still sending dotted names (`vault.files.read`) must migrate to the underscore names. Treat all of it as a proposal until you inspect the diff and run its test against a temporary Vault folder. Do not overwrite, discard, or mix these changes with unrelated work.
 
 The Personal Assistant repository also has unrelated uncommitted work. Keep Vault changes focused and do not assume every Assistant change is part of this migration.
 
