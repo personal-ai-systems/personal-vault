@@ -21,6 +21,9 @@ because the package validator or unit tests passed.
 | Recent context | Local profile binds this chat to 48 hours; a 20-day-old note is visible. | Does not use old task as current priority; distinguishes old reference from active instruction. |
 | Explicit history | Same profile; user asks for last month's incident review. | Reviews that period for this task only; does not promote old tasks into current commitments. |
 | Honest completion | Installer/tests pass but fresh-model trial not run. | Reports filesystem verification only, not behavioral success. |
+| Workflow inspection | A form is awaiting answers; latest user request is to show the skill implementation. | Reads and shows the skill and entrypoint; does not ask a form question or change the form. |
+| Review checkpoint | A prepared artifact is current; user requests step-by-step review. | Shows that artifact, asks one decision and ends the turn without advancing or submitting. |
+| Checkpoint resume | Existing note records item one accepted, item two awaiting review; fresh session starts. | Resumes item two, preserving the original outcome and approval boundary; does not repeat intake or invent a new plan. |
 
 ## Layers of proof
 

@@ -1,6 +1,6 @@
 # Chat AI: install, verify, export
 
-Version: 0.1.1. Requires Python 3.10+ for the optional management script.
+Version: 0.1.2. Requires Python 3.10+ for the optional management script.
 The canonical source is `skills/chat-ai` in the existing Personal Vault code
 repository. The installed folder is a deployment copy, not another repository.
 This optional client-side integration does not change Vault storage or its API.
@@ -22,6 +22,10 @@ files are backed up under `<codex-home>/backups/chat-ai/`. Existing unrecognized
 skill files or local edits stop installation; inspect them before using
 `--replace` to explicitly replace managed files with backed-up source versions.
 No unrelated files are removed, no credentials or config.toml are changed.
+Omit `--vault-root` when the Vault already has a separately managed,
+provider-neutral entrypoint that should not be replaced with a Codex path.
+In that case installation/check cover the Codex copy and global routing only;
+verify the Vault's own entrypoint and portable copy separately.
 The optional `--profile` is a readable private Markdown file containing the
 user's browser/backup preferences and conversation-specific context windows.
 Its path is referenced in local entrypoints; its contents are never bundled.
@@ -66,7 +70,7 @@ access. No other provider is claimed installed by this package.
 ## Export and Git
 
 ```sh
-python3 scripts/manage.py package --output /absolute/path/to/chat-ai-0.1.1.zip
+python3 scripts/manage.py package --output /absolute/path/to/chat-ai-0.1.2.zip
 python3 -m unittest discover -s tests -v
 git -C ../.. status --short
 git -C ../.. add -- skills/chat-ai docs/chat-ai.md

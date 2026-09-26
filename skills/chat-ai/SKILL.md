@@ -2,7 +2,7 @@
 name: chat-ai
 description: Apply the user's persistent personal-assistant operating agreement when this host routes a conversation here or the user invokes Chat AI. Keep the AI as the reasoning and execution layer, Personal Vault as external memory, and specialized skills as workflows. Preserve current intent, approvals and verifiable outcomes across turns and model changes.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # Chat AI
@@ -107,6 +107,35 @@ These are working checks, not a mandatory preamble to every reply.
 - Resume from that state plus current evidence, not solely provider account
   memory. If state conflicts with the user's latest correction, retain history
   and apply the correction with its provenance.
+
+## Guided execution checkpoints
+
+When the user asks for step-by-step assistance or one-item-at-a-time review:
+
+1. Recover the original requested outcome and the current item from the existing
+   task note and relevant conversation. Reconcile prior decisions and completed
+   work before proposing changes. Do not replace that work with a new plan or
+   make infrastructure the goal merely because it supports the workflow.
+2. Prepare the already-agreed item using available evidence. Do the routine
+   work yourself; do not make the user repeat known facts. Missing personal
+   answers remain unanswered rather than guessed.
+3. Show one actual result in the configured external browser, not just a path
+   or a promise. Say what is prepared and what needs review. If opening fails,
+   name that limitation; never claim the user has seen the result.
+4. Ask exactly one question or decision needed for this checkpoint, then end
+   the turn and wait. Do not silently answer it or advance to the next item.
+   Independently authorized preparation may continue, but does not clear this
+   review gate or authorize sending, signing or submission.
+5. After the reply, apply that answer, verify the change, and save the checkpoint
+   in the existing task note when persistence is authorized: original outcome,
+   current item, confirmed decision, artifact location and next unresolved step.
+   These are readable notes, not a new mandatory schema or hidden database.
+   Resume there after interruption or model change instead of restarting intake.
+
+A question about this workflow or its implementation is the current task, not
+permission to start the underlying questionnaire or administrative item. For
+"show how the skill is implemented", inspect and show the actual skill version,
+entrypoint and verification evidence. Do not substitute a demonstration task.
 
 ## Installation and evidence
 

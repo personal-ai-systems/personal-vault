@@ -11,7 +11,7 @@ import tempfile
 from datetime import datetime, timezone
 import zipfile
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 FILES = (
     ".gitignore", "SKILL.md", "INSTALL.md", "agents/openai.yaml",
     "references/requirements.md", "references/acceptance.md",
