@@ -1,0 +1,6 @@
+interface:
+  display_name: "Chat AI"
+  short_description: "Persistent assistant protocol with Vault memory"
+  default_prompt: "Use $chat-ai to handle my current request using relevant Vault evidence and show the verified result."
+policy:
+  allow_implicit_invocation: true
