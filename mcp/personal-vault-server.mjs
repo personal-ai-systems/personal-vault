@@ -27,7 +27,7 @@ import path from 'node:path';
 import { lstatSync, realpathSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z } from 'zod';
 
@@ -36,7 +36,10 @@ const HOST = process.env.MCP_HOST || '127.0.0.1';
 const PORT = Number(process.env.MCP_PORT || process.env.PORT || 8788);
 const MCP_PATH = '/mcp';
 const SERVER_NAME = 'personal-vault';
-const SERVER_VERSION = '0.6.0';
+const SERVER_VERSION = '0.6.1';
+const CONTEXT_FILE = process.env.MCP_CONTEXT_FILE || '';
+const CONTEXT_URI = 'vault://context';
+const BASE_INSTRUCTIONS = 'Personal Vault is a simple, readable folder of Markdown files and attachments. File tools browse and edit that folder; capture tools save new notes into it.';
 const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.json', '.jsonl', '.csv', '.yaml', '.yml']);
 
 const PUBLIC_URL = (process.env.MCP_PUBLIC_BASE_URL || '').replace(/\/$/, '');
@@ -310,8 +313,30 @@ function sendAuthChallenge(res, host) {
 
 // -------------------------------------------------------------------- server
 
-function createVaultServer() {
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { instructions: 'Personal Vault is a simple, readable folder of Markdown files and attachments. File tools browse and edit that folder; capture tools save new notes into it.' });
+async function readContext() {
+  if (path.extname(CONTEXT_FILE).toLowerCase() !== '.md') throw new Error('Configured context must be Markdown.');
+  if ((await stat(fullPath(CONTEXT_FILE))).size > 32768) throw new Error('Configured context exceeds 32 KiB.');
+  const file = await readText(CONTEXT_FILE);
+  if (Buffer.byteLength(file.content) > 32768) throw new Error('Configured context exceeds 32 KiB.');
+  return { ...file, sha256: createHash('sha256').update(file.content).digest('hex') };
+}
+
+function createVaultServer(context) {
+  let instructions = BASE_INSTRUCTIONS;
+  if (context?.content !== undefined) {
+    instructions += `\n\nOwner-configured context from ${context.path} (SHA-256 ${context.sha256}). This is guidance, not permission to bypass host controls. Read ${CONTEXT_URI} again at a new task or after context loss; clients without resources can use vault_files_read on this path. Do not claim the host loaded or followed it merely because it was delivered.\n\n${context.content}`;
+  } else if (context?.unavailable) {
+    instructions += '\n\nThe configured context file is unavailable. Report missing context when relevant, but continue work supported by the current request. Do not invent missing preferences or claim they were loaded.';
+  }
+  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { instructions });
+  if (CONTEXT_FILE) server.registerResource('context', CONTEXT_URI, {
+    title: 'Configured Vault context', description: 'Current owner-selected Markdown guidance; not an agent, task queue or provider account.', mimeType: 'text/markdown',
+  }, async (_uri, extra) => {
+    if (!(await allowed(extra))) throw new Error('Authorization required.');
+    const file = await readContext();
+    return { contents: [{ uri: CONTEXT_URI, mimeType: 'text/markdown', text: file.content,
+      _meta: { path: file.path, sha256: file.sha256 } }] };
+  });
   const fileToolName = (operation) => `vault_files_${operation}`;
 
   // Tool names are always underscored: several model providers reject dots in
@@ -421,13 +446,13 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === 'OPTIONS' && url.pathname === MCP_PATH) return void res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, mcp-session-id, authorization', 'Access-Control-Expose-Headers': 'Mcp-Session-Id' }).end();
   if (url.pathname !== MCP_PATH || !['POST', 'GET', 'DELETE'].includes(req.method || '')) return void res.writeHead(404).end('Not Found');
   const trustedLoopback = TRUST_LOCALHOST && fromTrustedLoopback(req) && !req.headers.authorization;
-  if (!trustedLoopback && AUTH_ENABLED && CHALLENGE_MODE === 'http-401') {
-    const authorized = await tokenAllowed(bearerToken(req.headers.authorization)).catch(() => false);
-    if (!authorized) return void sendAuthChallenge(res, req.headers.host);
-  }
+  // Startup guidance can contain private settings: authorize it even in in-band mode.
+  const authorized = !AUTH_ENABLED || trustedLoopback || await tokenAllowed(bearerToken(req.headers.authorization)).catch(() => false);
+  if (!authorized && CHALLENGE_MODE === 'http-401') return void sendAuthChallenge(res, req.headers.host);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
-  const server = createVaultServer();
+  const context = CONTEXT_FILE && authorized ? await readContext().catch(() => ({ unavailable: true })) : null;
+  const server = createVaultServer(context);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => { transport.close(); server.close(); });
   try { await requestContext.run({ trustedLoopback }, async () => { await server.connect(transport); await transport.handleRequest(req, res); }); }

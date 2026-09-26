@@ -17,6 +17,7 @@
     "mcp:vault": "node mcp/personal-vault-server.mjs",
     "test": "node scripts/mcp-smoke-test.mjs",
     "test:mcp-smoke": "node scripts/mcp-smoke-test.mjs",
+    "test:context": "node scripts/context-smoke-test.mjs",
     "scan:secrets": "node scripts/scan-secrets.mjs",
     "scan:secrets:history": "node scripts/scan-secrets.mjs --history"
   },
