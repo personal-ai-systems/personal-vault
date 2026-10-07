@@ -1,6 +1,8 @@
 # Personal Vault
 
-Personal Vault is local-first memory for AI that you own. It stores notes and files as ordinary Markdown and attachments in a folder on your computer, without locking the data into one app or AI provider.
+**Your AI memory should belong to you, not to one model.**
+
+Personal Vault stores notes, decisions, project context and attachments as ordinary readable files in a folder you own. The memory stays outside the AI provider, so the same Vault can support OpenAI GPT or Codex models, Anthropic Claude, Google Gemini, DeepSeek, Kimi, and local models such as Llama, Qwen or Mistral through a suitable client.
 
 **Try the Mac app:** [download the early Apple Silicon preview](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.1.0-preview.2). Browse, search and edit files in a folder you own. No account is needed. This preview is unsigned and not notarized; start with a disposable test folder. Cloud sync and automatic updates are not included.
 
@@ -9,6 +11,14 @@ This repository contains the file engine and MCP tools. The [desktop interface a
 Open it in Finder. Read the Markdown. Keep your own backups. Use any editor you like.
 
 The optional MCP server lets an app or AI assistant browse and edit the same readable files safely. It does not replace the folder with a hidden system.
+
+## Ways to use it
+
+- **Without AI:** browse and edit the files directly or use the Mac app.
+- **With file-aware AI:** give selected Markdown files to any client that accepts file input.
+- **With MCP:** connect a compatible client for controlled list, read, search, capture and update operations.
+
+Personal Vault does not choose or include models, provider accounts or subscriptions. Compatibility depends on the client and the access the owner grants it. Switching models preserves the stored memory; the new client must still load the relevant files or connect to the Vault.
 
 ## What a Vault looks like
 
