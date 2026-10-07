@@ -51,7 +51,7 @@ Personal Vault is not intended to be tied to macOS. The current implementation i
 | Platform or access path | Status | How it uses the Vault |
 | --- | --- | --- |
 | macOS Apple Silicon desktop app | **Preview available now** | Bundles the UI and local MCP server; files stay in the selected folder. |
-| Core MCP server on macOS, Windows and Linux | **Source available; cross-platform CI being added** | Runs beside a readable folder using Node.js. Packaged service installers are still to be implemented. |
+| Core MCP server on macOS, Windows and Linux | **Available from source; verified in CI on all three platforms** | Runs beside a readable folder using Node.js. Packaged service installers are still to be implemented. |
 | Windows desktop app | **Coming soon** | Planned Electron installer using the same UI, MCP tools and ordinary files. |
 | Linux desktop app | **Coming soon** | Planned package using the same UI, MCP tools and ordinary files. |
 | Intel Mac desktop app | **Coming soon** | Requires a separate signed build and installation testing. |
