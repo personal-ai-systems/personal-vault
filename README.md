@@ -2,6 +2,10 @@
 
 Personal Vault is a simple, local folder for your notes and files.
 
+**Try the Mac app:** [download the early Apple Silicon preview](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.1.0-preview.2). Browse, search and edit files in a folder you own. No account is needed. This preview is unsigned and not notarized; start with a disposable test folder. Cloud sync and automatic updates are not included.
+
+This repository contains the file engine and MCP tools. The [desktop interface and tester instructions](https://github.com/personal-ai-systems/personal-vault-ui) live in the companion repository.
+
 Open it in Finder. Read the Markdown. Keep your own backups. Use any editor you like.
 
 The optional MCP server lets an app or AI assistant browse and edit the same readable files safely. It does not replace the folder with a hidden system.
