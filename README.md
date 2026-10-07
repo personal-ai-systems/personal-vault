@@ -2,17 +2,17 @@
 
 **Keep your AI memory in a folder you own — not inside one model or app.**
 
-Personal Vault is a simple Mac app for keeping notes, decisions, project context and attachments as ordinary readable files. You can browse them in the app, open them in Finder or any Markdown editor, and choose when an AI client may use them.
+Personal Vault is a provider-neutral memory system built around ordinary readable files and an optional MCP server. The same design can run on macOS, Windows, Linux and an owner-controlled server. Desktop apps and remote/mobile connectors are clients of the same Vault — they are not separate storage systems.
 
-[**Download Personal Vault for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.1.0-preview.2/Personal.Vault-0.1.0-arm64.dmg)
+[**Download the current preview for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.1.0-preview.2/Personal.Vault-0.1.0-arm64.dmg)
 
 [View release notes or download the ZIP](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.1.0-preview.2) · [Report a problem](https://github.com/personal-ai-systems/personal-vault-ui/issues)
 
-> **Early preview:** this build is for Macs with an Apple M-series chip. It is unsigned and not notarized, so macOS requires a one-time manual approval. Start with a new empty test folder or copies of files you can afford to lose. Intel Macs, Windows, cloud sync and automatic updates are not supported yet.
+> **Current download, not product boundary:** the first packaged preview is for Macs with an Apple M-series chip. Windows, Linux, Intel Mac and secure mobile access are part of the cross-platform direction below, but their installers/connectors are not released yet.
 
 ![Personal Vault showing a readable folder tree and Markdown files](docs/images/personal-vault-browser.png)
 
-<sub>Current development interface shown with synthetic demo files. The downloadable preview may differ slightly.</sub>
+<sub>Current development interface with synthetic demo data. The selected thought is a normal file at `Daily/2026/10/2026-10-07-daily-reflection.md`; both the filesystem location and the saved date remain visible. The downloadable preview may differ slightly.</sub>
 
 ## Why use it?
 
@@ -22,25 +22,46 @@ Personal Vault keeps that context outside the provider:
 
 - **Your files stay yours.** Notes are Markdown files and attachments in a folder you choose.
 - **You can change AI models.** The same folder can support OpenAI GPT or Codex, Anthropic Claude, Google Gemini, DeepSeek, Kimi, or local models such as Llama, Qwen and Mistral through a suitable client.
-- **It works without AI.** Browse, search and edit the files in the Mac app, Finder, Obsidian, VS Code or another Markdown editor.
+- **It works without AI.** Browse, search and edit the files in a desktop app, Finder, Windows File Explorer, Obsidian, VS Code or another Markdown editor.
 - **AI access is optional.** Compatible clients can use the included local MCP interface to list, read, search, create and update files after you grant access.
 - **There is no hidden canonical database.** If the app disappears, the folder is still readable.
 
 ```mermaid
 flowchart LR
     V["Your Personal Vault folder<br/>Markdown + attachments"]
-    A["Personal Vault Mac app"]
-    E["Finder, Obsidian or another editor"]
-    C["Compatible AI client"]
+    S["Personal Vault MCP server"]
+    D["Desktop app<br/>macOS now; Windows and Linux planned"]
+    E["Finder, File Explorer,<br/>Obsidian or another editor"]
+    R["Secure remote access<br/>coming soon"]
+    C["Mobile or desktop AI client"]
     M["Model you choose"]
 
-    A <--> V
+    D <--> S
+    S <--> V
     E <--> V
-    V <--> |"optional local MCP access"| C
+    S <--> R
+    R <--> C
     C <--> M
 ```
 
-## Install on a Mac
+## Platform support
+
+Personal Vault is not intended to be tied to macOS. The current implementation is being released in small, testable steps:
+
+| Platform or access path | Status | How it uses the Vault |
+| --- | --- | --- |
+| macOS Apple Silicon desktop app | **Preview available now** | Bundles the UI and local MCP server; files stay in the selected folder. |
+| Core MCP server on macOS, Windows and Linux | **Source available; cross-platform CI being added** | Runs beside a readable folder using Node.js. Packaged service installers are still to be implemented. |
+| Windows desktop app | **Coming soon** | Planned Electron installer using the same UI, MCP tools and ordinary files. |
+| Linux desktop app | **Coming soon** | Planned package using the same UI, MCP tools and ordinary files. |
+| Intel Mac desktop app | **Coming soon** | Requires a separate signed build and installation testing. |
+| ChatGPT and other remote MCP clients | **Coming soon** | Connect through an authenticated HTTPS MCP endpoint or secure tunnel to the owner-controlled Vault host. |
+| iPhone, iPad and Android | **Coming soon through compatible clients** | The phone acts as a client; it does not need direct access to the desktop filesystem. |
+| iCloud Drive and Google Drive backup | **Planned** | Backup/restore for the readable folder, not a replacement hidden database. |
+
+`localhost:8788` is only for software running on the same computer. A phone cannot reach that address on the Mac. Remote/mobile access must add authentication, HTTPS and an owner-controlled connection method; users should never expose the local port directly to the internet.
+
+## Try the current Mac preview
 
 ### 1. Check your Mac
 
@@ -84,7 +105,7 @@ That folder is your Vault. The app does not upload it, convert it into a databas
 
 After the app opens:
 
-1. Create a small Markdown note, such as `ideas.md`.
+1. Create a small Markdown note, such as `2026-10-07-my-thought.md`.
 2. Add a few lines of text and save it.
 3. Search for a word from the note.
 4. Open the same file directly from the selected folder in Finder or another Markdown editor.
@@ -92,11 +113,13 @@ After the app opens:
 
 The important result is simple: the note remains a normal file in the folder you selected.
 
+Dates are not hidden metadata. If you want a chronological journal, keep the date in the file name and folder path so it remains visible in Personal Vault, Finder, Windows File Explorer and any Markdown editor.
+
 ## Use it with or without AI
 
 ### Without AI
 
-Use the Mac app as a file browser and Markdown editor, or open the same folder with tools you already use. No account, connector or model is required.
+Use the current Mac app, a future Windows/Linux app, or open the same folder with tools you already use. No AI account, connector or model is required.
 
 ### Give selected files to an AI
 
@@ -104,9 +127,20 @@ For an occasional task, attach selected Markdown files to any AI client that acc
 
 ### Connect a compatible AI client
 
-The app includes a local MCP service for controlled file operations. A compatible client can list, read, search, create, update, attach, archive and restore files in the selected Vault.
+The current app includes a local MCP service for controlled file operations. The same server can back future Windows/Linux apps and a secured remote connection. A compatible client can list, read, search, create, update, attach, archive and restore files in the selected Vault.
 
 Personal Vault does **not** include model accounts or subscriptions, and it does not automatically connect every provider. Each client must be configured to read the relevant files or connect to the Vault. Switching models preserves the stored memory; it does not silently send that memory to the new provider.
+
+### Use it from a phone
+
+The intended mobile flow is:
+
+1. Personal Vault remains on a computer or owner-controlled server with access to the readable folder.
+2. The MCP service is made available through authenticated HTTPS or a secure tunnel.
+3. ChatGPT or another compatible mobile client connects to that MCP service.
+4. The user can inspect and approve what the AI reads or changes.
+
+This remote/mobile packaging is **to be implemented**. The current local server already speaks MCP over Streamable HTTP, but the public product does not yet ship the secure remote setup or claim a verified ChatGPT mobile connection.
 
 ## What is stored?
 
@@ -114,7 +148,9 @@ There is no required internal layout. A Vault can be as simple as:
 
 ```text
 Personal Vault/
-├── ideas.md
+├── Daily/
+│   └── 2026/10/
+│       └── 2026-10-07-daily-reflection.md
 ├── projects/
 │   └── home-renovation.md
 ├── documents/
@@ -127,10 +163,10 @@ You can organise the folder in a way that makes sense to you. Attachments stay a
 ## Privacy and preview limitations
 
 - Files remain in the folder you select unless you move, share or back them up yourself.
-- The local service listens on the Mac's loopback interface rather than exposing the Vault to the network by default.
+- The local service listens on the host computer's loopback interface rather than exposing the Vault to the network by default.
 - The preview has no built-in cloud sync or backup. Keep your own backup.
 - The current build is unsigned and not notarized.
-- Automatic updates, Intel Mac and Windows builds are not available yet.
+- Automatic updates and Windows, Linux and Intel Mac installers are not available yet.
 - This is an early test release, not a promise that every workflow is production-ready.
 
 Please do not include private notes, credentials or personal information in public GitHub issues or screenshots.
@@ -141,11 +177,11 @@ Please do not include private notes, credentials or personal information in publ
 - [Read the current release notes](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.1.0-preview.2)
 - [Read the short usage guide](docs/using-personal-vault.md)
 
-When reporting a problem, include what you tried, what happened, and your macOS version. Remove personal information from screenshots and sample files.
+When reporting a problem, include what you tried, what happened, and your operating-system version. Remove personal information from screenshots and sample files.
 
 ## For developers
 
-This repository contains the readable-file engine and local MCP interface. The companion [`personal-vault-ui`](https://github.com/personal-ai-systems/personal-vault-ui) repository contains the Mac interface and packaging. The downloadable app bundles both; end users do not need to clone either repository.
+This repository contains the portable readable-file engine and MCP interface. The companion [`personal-vault-ui`](https://github.com/personal-ai-systems/personal-vault-ui) repository contains the Electron interface and the first macOS packaging. Future Windows and Linux packages should bundle the same engine instead of introducing platform-specific storage.
 
 ### Run the MCP service locally
 
