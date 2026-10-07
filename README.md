@@ -2,7 +2,7 @@
 
 **Keep your AI memory in a folder you own — not inside one model or app.**
 
-Personal Vault is a provider-neutral memory system built around ordinary readable files and an optional MCP server. The same design can run on macOS, Windows, Linux and an owner-controlled server. Desktop apps and remote/mobile connectors are clients of the same Vault — they are not separate storage systems.
+AI models are improving fast, but the useful context you build with them is still trapped inside separate apps. Personal Vault keeps your notes, decisions, project context and attachments as ordinary files in a folder you own. Read and edit them yourself, or connect compatible GPT, Claude, Gemini, DeepSeek and local-model clients to the same memory. Switch models without starting over — and keep your knowledge even if an app, subscription or provider disappears.
 
 [**Download the current preview for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.1.0-preview.2/Personal.Vault-0.1.0-arm64.dmg)
 
