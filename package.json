@@ -22,7 +22,7 @@
     "scan:secrets:history": "node scripts/scan-secrets.mjs --history"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^4.4.3"
   }
 }
