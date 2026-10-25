@@ -43,11 +43,11 @@ mcp_tools_list() {
 # file contract.
 vault_is_healthy() {
   local url="$1" init_body="$2" tools_body
-  print -r -- "$init_body" | grep -q '"serverInfo"' || return 1
+  printf "%s\n" "$init_body" | grep -q '"serverInfo"' || return 1
   tools_body="$(mcp_tools_list "$url")"
-  print -r -- "$tools_body" | grep -q '"vault_files_list"' || return 1
-  print -r -- "$tools_body" | grep -q '"vault_files_create"' || return 1
-  print -r -- "$tools_body" | grep -q '"vault_files_search"' || return 1
+  printf "%s\n" "$tools_body" | grep -q '"vault_files_list"' || return 1
+  printf "%s\n" "$tools_body" | grep -q '"vault_files_create"' || return 1
+  printf "%s\n" "$tools_body" | grep -q '"vault_files_search"' || return 1
 }
 
 restart_agent() { launchctl kickstart -k "gui/$(id -u)/$1" >/dev/null 2>&1 || true; }
@@ -78,10 +78,10 @@ if [[ -n "$PUBLIC_URL" ]]; then
     public_body="$(mcp_initialize "$PUBLIC_URL")"
     vault_is_healthy "$PUBLIC_URL" "$public_body" && public_ok=true
   fi
-  public_excerpt="$(print -r -- "$public_body" | head -c 260 | json_escape)"
+  public_excerpt="$(printf "%s\n" "$public_body" | head -c 260 | json_escape)"
 fi
 
-local_excerpt="$(print -r -- "$local_body" | head -c 260 | json_escape)"
+local_excerpt="$(printf "%s\n" "$local_body" | head -c 260 | json_escape)"
 
 cat > "$STATUS_FILE" <<JSON
 {
@@ -97,7 +97,7 @@ cat > "$STATUS_FILE" <<JSON
 }
 JSON
 
-print -r -- "$now vault localOk=$local_ok publicOk=$public_ok" >> "$LOG_FILE"
+printf "%s\n" "$now vault localOk=$local_ok publicOk=$public_ok" >> "$LOG_FILE"
 
 [[ "$local_ok" == true ]] || exit 1
 [[ "$public_ok" == true || "$public_ok" == null ]] || exit 1
