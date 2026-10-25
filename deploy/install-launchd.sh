@@ -59,9 +59,17 @@ for template in "$REPO_DIR"/deploy/launchd/*.plist.template; do
     continue
   fi
 
-  print -r -- "$rendered" > "$target"
-  /usr/libexec/PlistBuddy -c "Print :Label" "$target" >/dev/null || {
-    echo "rendered plist is invalid: $target" >&2; rc=1; continue; }
+  # Validate before touching the live plist: a broken render must never replace
+  # an agent that is currently working.
+  tmp_plist="$(mktemp -t rendered-plist)"
+  print -r -- "$rendered" > "$tmp_plist"
+  if ! /usr/libexec/PlistBuddy -c "Print :Label" "$tmp_plist" >/dev/null 2>&1; then
+    echo "rendered plist is invalid, keeping the existing agent: $target" >&2
+    rm -f "$tmp_plist"
+    rc=1
+    continue
+  fi
+  /bin/mv -f "$tmp_plist" "$target"
 
   launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
   if launchctl bootstrap "gui/$(id -u)" "$target" >/dev/null 2>&1; then

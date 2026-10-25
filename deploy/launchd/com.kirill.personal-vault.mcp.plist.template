@@ -16,7 +16,7 @@ export MCP_PUBLIC_BASE_URL="__PUBLIC_BASE_URL__"
 export MCP_GOOGLE_AUTH="__GOOGLE_AUTH__"
 export GOOGLE_ALLOWED_EMAILS="__GOOGLE_ALLOWED_EMAILS__"
 export MCP_SERVICE_TOKENS="$(cat __CONFIG_DIR__/mcp-service-token)"
-cd __REPO_DIR__ && exec __NODE_BIN__ mcp/personal-vault-server.mjs</string>
+cd __REPO_DIR__ || exit 1; exec __NODE_BIN__ mcp/personal-vault-server.mjs</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
