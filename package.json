@@ -13,10 +13,15 @@
   "engines": {
     "node": ">=24"
   },
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./core": "./lib/index.mjs"
+  },
   "scripts": {
     "mcp:vault": "node mcp/personal-vault-server.mjs",
     "import:openai": "node scripts/import-openai-export.mjs",
-    "test": "npm run test:mcp-smoke && npm run test:import-openai",
+    "test": "npm run test:lib && npm run test:mcp-smoke && npm run test:import-openai",
+    "test:lib": "node scripts/lib-smoke-test.mjs",
     "test:mcp-smoke": "node scripts/mcp-smoke-test.mjs",
     "test:import-openai": "node scripts/openai-import-test.mjs",
     "test:context": "node scripts/context-smoke-test.mjs",
