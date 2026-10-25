@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.kirill.personal-vault.mcp</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PERSONAL_VAULT_ROOT="__VAULT_ROOT__"
+export MCP_HOST="127.0.0.1"
+export MCP_PORT="8788"
+export MCP_TRUST_LOCALHOST="true"
+export MCP_PUBLIC_BASE_URL="__PUBLIC_BASE_URL__"
+export MCP_GOOGLE_AUTH="__GOOGLE_AUTH__"
+export GOOGLE_ALLOWED_EMAILS="__GOOGLE_ALLOWED_EMAILS__"
+export MCP_SERVICE_TOKENS="$(cat __CONFIG_DIR__/mcp-service-token)"
+cd __REPO_DIR__ && exec __NODE_BIN__ mcp/personal-vault-server.mjs</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__VAULT_ROOT__/logs/personal-vault-mcp.out.log</string>
+  <key>StandardErrorPath</key><string>__VAULT_ROOT__/logs/personal-vault-mcp.err.log</string>
+</dict>
+</plist>
