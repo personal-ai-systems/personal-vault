@@ -15,14 +15,17 @@
   },
   "scripts": {
     "mcp:vault": "node mcp/personal-vault-server.mjs",
-    "test": "node scripts/mcp-smoke-test.mjs",
+    "import:openai": "node scripts/import-openai-export.mjs",
+    "test": "npm run test:mcp-smoke && npm run test:import-openai",
     "test:mcp-smoke": "node scripts/mcp-smoke-test.mjs",
+    "test:import-openai": "node scripts/openai-import-test.mjs",
     "test:context": "node scripts/context-smoke-test.mjs",
     "scan:secrets": "node scripts/scan-secrets.mjs",
     "scan:secrets:history": "node scripts/scan-secrets.mjs --history"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "fflate": "^0.8.3",
     "zod": "^4.4.3"
   }
 }
