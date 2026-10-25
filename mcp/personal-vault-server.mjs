@@ -108,7 +108,12 @@ async function list(relative = '', recursive = false, limit = 200) {
       if (recursive && entry.isDirectory()) await walk(candidate);
     }
   }
-  await walk(root);
+  try { await walk(root); }
+  catch (error) {
+    // Listing a folder that has not been created yet is an empty result. Other
+    // filesystem failures remain visible to the caller.
+    if (error.code !== 'ENOENT') throw error;
+  }
   return entries.sort((left, right) => left.path.localeCompare(right.path));
 }
 

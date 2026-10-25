@@ -47,6 +47,8 @@ try {
   for (const tool of tools.tools) assert.equal(tool.name.includes('.'), false, `${tool.name} must not contain a dot`);
 
   const call = (name, args) => client.callTool({ name: `vault_files_${name}`, arguments: args });
+  const missingFolder = await call('list', { path: 'raw/2099/01' });
+  assert.deepEqual(missingFolder.structuredContent.items, []);
   const created = await call('create', { path: 'raw/2026/08/hello.md', content: '# Hello\n\nA readable note.\n' });
   assert.equal(created.structuredContent.path, 'raw/2026/08/hello.md');
   assert.equal((await call('read', { path: 'raw/2026/08/hello.md' })).structuredContent.content.includes('readable note'), true);
