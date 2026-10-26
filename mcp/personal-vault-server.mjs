@@ -172,6 +172,17 @@ function createVaultServer(context) {
     try { return { content: [{ type: 'text', text: `Created ${target}.` }], structuredContent: await writeText(target, content) }; }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
   });
+
+  server.registerTool(fileToolName('read_binary'), { title: 'Read an attachment', inputSchema: { path: z.string().min(1) } }, async ({ path: target }, extra) => {
+    if (!(await allowed(extra))) return authError(extra);
+    try {
+      const metadata = await vault.info(target);
+      if (metadata.sizeBytes > 10 * 1024 * 1024) throw new Error('This attachment is too large to preview. Open it from the Vault folder.');
+      const file = await vault.readBinary(target);
+      const { content, ...info } = file;
+      return { content: [{ type: 'text', text: `Read attachment ${target}` }], structuredContent: { ...info, dataBase64: content.toString('base64') } };
+    } catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
+  });
   server.registerTool(fileToolName('update'), { title: 'Update a text file', inputSchema: { path: z.string().min(1), content: z.string() } }, async ({ path: target, content }, extra) => {
     if (!(await allowed(extra))) return authError(extra);
     try { return { content: [{ type: 'text', text: `Updated ${target}.` }], structuredContent: await writeText(target, content, true) }; }

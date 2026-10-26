@@ -41,7 +41,7 @@ try {
   const client = new Client({ name: 'personal-vault-smoke', version: '1.0.0' });
   await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
   const captureTools = ['apply_capture_action', 'capture_asset', 'capture_note', 'get_capture_review', 'get_today_plan', 'search_vault'];
-  const fileTools = ['vault_files_archive', 'vault_files_attach', 'vault_files_create', 'vault_files_list', 'vault_files_read', 'vault_files_restore', 'vault_files_search', 'vault_files_update'];
+  const fileTools = ['vault_files_archive', 'vault_files_attach', 'vault_files_create', 'vault_files_list', 'vault_files_read', 'vault_files_read_binary', 'vault_files_restore', 'vault_files_search', 'vault_files_update'];
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [...captureTools, ...fileTools].sort());
   for (const tool of tools.tools) assert.equal(tool.name.includes('.'), false, `${tool.name} must not contain a dot`);
@@ -67,6 +67,9 @@ try {
   assert.equal((await call('update', { path: 'missing.md', content: 'missing' })).isError, true);
   assert.equal((await call('attach', { markdownPath: 'raw/2026/08/hello.md', name: 'sample.bin', dataBase64: Buffer.from('different').toString('base64') })).isError, true);
   assert.equal(await readFile(path.join(fixture, 'raw/2026/08/hello.assets/sample.bin'), 'utf8'), 'sample');
+  const binary = await call('read_binary', { path: 'raw/2026/08/hello.assets/sample.bin' });
+  assert.equal(Buffer.from(binary.structuredContent.dataBase64, 'base64').toString(), 'sample');
+  assert.equal((await call('read_binary', { path: '../outside.bin' })).isError, true);
   await call('update', { path: 'raw/2026/08/hello.md', content: '# Edited' });
   assert.equal(await readFile(path.join(fixture, 'raw/2026/08/hello.md'), 'utf8'), '# Edited');
 
@@ -76,6 +79,7 @@ try {
     await symlink(outside, path.join(fixture, 'escape'));
     for (const [name, args] of [
       ['read', { path: 'escape/outside.md' }],
+      ['read_binary', { path: 'escape/outside.md' }],
       ['create', { path: 'escape/new.md', content: 'bad' }],
       ['update', { path: 'escape/outside.md', content: 'bad' }],
       ['archive', { path: 'escape/outside.md' }],
