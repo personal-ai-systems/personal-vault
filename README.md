@@ -4,9 +4,9 @@
 
 AI models are improving fast, but the useful context you build with them is still trapped inside separate apps. Personal Vault keeps your notes, decisions, project context and attachments as ordinary files in a folder you own. Read and edit them yourself, or connect compatible GPT, Claude, Gemini, DeepSeek and local-model clients to the same memory. Switch models without starting over — and keep your knowledge even if an app, subscription or provider disappears.
 
-[**Download the current preview for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.2.0-preview.1/Personal.Vault-0.2.0-arm64.dmg)
+[**Download preview.3 for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.2.1-preview.3/Personal.Vault-0.2.1-preview.3-arm64.dmg)
 
-[View release notes or download the ZIP](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.2.0-preview.1) · [Report a problem](https://github.com/personal-ai-systems/personal-vault-ui/issues)
+[View release notes or download the ZIP](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.2.1-preview.3) · [First-time testing guide](https://github.com/personal-ai-systems/personal-vault-ui/blob/v0.2.1-preview.3/docs/testing-preview.md) · [Report a problem](https://github.com/personal-ai-systems/personal-vault-ui/issues)
 
 > **Current download, not product boundary:** the first packaged preview is for Macs with an Apple M-series chip. Windows, Linux, Intel Mac and secure mobile access are part of the cross-platform direction below, but their installers/connectors are not released yet.
 
@@ -71,7 +71,7 @@ On your Mac, choose **Apple menu → About This Mac**. Look for an **Apple M-ser
 
 ### 2. Download the installer
 
-Download [**Personal.Vault-0.2.0-arm64.dmg**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.2.0-preview.1/Personal.Vault-0.2.0-arm64.dmg).
+Download [**Personal.Vault-0.2.1-preview.3-arm64.dmg**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.2.1-preview.3/Personal.Vault-0.2.1-preview.3-arm64.dmg).
 
 The file is approximately 147 MB. You do not need Node.js, Terminal, an MCP client or an AI subscription to use the app.
 
@@ -197,7 +197,7 @@ Please do not include private notes, credentials or personal information in publ
 ## Get help or give feedback
 
 - [Report a bug or request an improvement](https://github.com/personal-ai-systems/personal-vault-ui/issues)
-- [Read the current release notes](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.2.0-preview.1)
+- [Read the current release notes](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.2.1-preview.3)
 - [Read the short usage guide](docs/using-personal-vault.md)
 
 When reporting a problem, include what you tried, what happened, and your operating-system version. Remove personal information from screenshots and sample files.
