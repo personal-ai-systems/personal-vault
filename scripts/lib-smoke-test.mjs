@@ -7,7 +7,7 @@
 // cannot damage user files.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -52,6 +52,13 @@ try {
     assert.deepEqual(await vault.list('raw/2099/01'), []);
   });
 
+  check('a new root resolves its existing parent before first save', async () => {
+    const fresh = createVault({ root: path.join(tmpdir(), path.basename(root), 'new', 'selected') });
+    await fresh.writeText('hello.md', 'first note');
+    assert.equal(fresh.root, path.join(root, 'new/selected'));
+    assert.equal((await fresh.readText('hello.md')).content, 'first note');
+  });
+
   check('create writes readable text and returns file info', async () => {
     const created = await vault.writeText('raw/2026/08/hello.md', '# Hello\n\nA readable note.\n');
     assert.equal(created.path, 'raw/2026/08/hello.md');
@@ -87,6 +94,14 @@ try {
       (error) => error.code === 'ENOENT',
     );
     assert.equal((await vault.list('raw/2026/08')).some((item) => item.path === 'raw/2026/08/fresh.md'), false);
+  });
+
+  check('saving an existing private file preserves its permissions', async () => {
+    await vault.writeText('private.md', 'before');
+    if (process.platform === 'win32') return;
+    await chmod(assertInside(root, 'private.md'), 0o600);
+    await vault.writeText('private.md', 'after', true);
+    assert.equal((await stat(assertInside(root, 'private.md'))).mode & 0o777, 0o600);
   });
 
   check('attach saves a visible .assets file beside the Markdown', async () => {
@@ -187,6 +202,94 @@ try {
 
   check('binary and unknown extensions are not writable through the text API', async () => {
     await assert.rejects(() => vault.writeText('raw/2026/08/image.png', 'nope'), /readable text files only/);
+  });
+
+  check('readBinary returns bytes for a non-text file', async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+    await writeFile(assertInside(root, 'raw/2026/08/pixel.png'), bytes);
+    const read = await vault.readBinary('raw/2026/08/pixel.png');
+    assert.equal(Buffer.compare(read.content, bytes), 0);
+    assert.equal(read.sizeBytes, bytes.length);
+    assert.equal(read.path, 'raw/2026/08/pixel.png');
+  });
+
+  check('readBinary refuses a folder', async () => {
+    await assert.rejects(() => vault.readBinary('raw'), /folder, not a file/);
+  });
+
+  check('appendText creates the file and its folder, then appends', async () => {
+    const first = await vault.appendText('indexes/captures.jsonl', '{"n":1}\n');
+    assert.equal(first.path, 'indexes/captures.jsonl');
+    await vault.appendText('indexes/captures.jsonl', '{"n":2}\n');
+    const stored = await readFile(assertInside(root, 'indexes/captures.jsonl'), 'utf8');
+    assert.equal(stored, '{"n":1}\n{"n":2}\n');
+  });
+
+  check('appendText appends to an existing file without truncating it', async () => {
+    await vault.writeText('indexes/existing.jsonl', '{"a":1}\n');
+    await vault.appendText('indexes/existing.jsonl', '{"a":2}\n');
+    assert.equal(await readFile(assertInside(root, 'indexes/existing.jsonl'), 'utf8'), '{"a":1}\n{"a":2}\n');
+  });
+
+  check('exists reports both states without throwing', async () => {
+    assert.equal(await vault.exists('raw/2026/08/hello.md'), true);
+    assert.equal(await vault.exists('raw/2026/08/absent.md'), false);
+  });
+
+  check('ensureFolder is idempotent', async () => {
+    await vault.ensureFolder('structured/plans');
+    await vault.ensureFolder('structured/plans');
+    assert.equal((await vault.list('structured')).some((item) => item.path === 'structured/plans' && item.kind === 'folder'), true);
+  });
+
+  check('move renames a file and its .assets folder', async () => {
+    await vault.writeText('raw/2026/08/movable.md', 'movable');
+    await vault.attach('raw/2026/08/movable.md', 'side.bin', Buffer.from('side').toString('base64'));
+    const moved = await vault.move('raw/2026/08/movable.md', '.trash/movable.md');
+    assert.equal(moved.to, '.trash/movable.md');
+    assert.equal(await readFile(assertInside(root, '.trash/movable.md'), 'utf8'), 'movable');
+    assert.equal(await readFile(assertInside(root, '.trash/movable.assets/side.bin'), 'utf8'), 'side');
+  });
+
+  check('move refuses to clobber an existing destination', async () => {
+    await vault.writeText('raw/2026/08/one.md', 'one');
+    await vault.writeText('raw/2026/08/two.md', 'two');
+    await assert.rejects(() => vault.move('raw/2026/08/one.md', 'raw/2026/08/two.md'), /already exists at the destination/);
+    assert.equal(await readFile(assertInside(root, 'raw/2026/08/one.md'), 'utf8'), 'one');
+  });
+
+  check('metadata refuses absolute paths, traversal and symlinks', async () => {
+    assert.equal((await vault.info('raw/2026/08/one.md')).kind, 'file');
+    await assert.rejects(() => vault.info(path.join(other, 'outside.md')), /Path must stay inside/);
+    await assert.rejects(() => vault.info('../outside.md'), /Path must stay inside/);
+    await assert.rejects(() => vault.info('escape/outside.md'), /Symbolic links/);
+  });
+
+  check('renamed Markdown keeps inline and reference attachment links', async () => {
+    const body = '# Rename\n![pic](./old.assets/a.png)\n[file](old.assets/a.png)\n[ref]: ./old.assets/a.png\nhttps://example.com/old.assets/a.png\n`![inline](./old.assets/a.png)`\n```md\n![example](./old.assets/a.png)\n```\n';
+    await vault.writeText('rename/old.md', body);
+    await vault.attach('rename/old.md', 'a.png', Buffer.from('image').toString('base64'));
+    await vault.move('rename/old.md', 'elsewhere/new.md');
+    const content = (await vault.readText('elsewhere/new.md')).content;
+    assert.ok(content.includes('![pic](./new.assets/a.png)'));
+    assert.ok(content.includes('[file](new.assets/a.png)'));
+    assert.ok(content.includes('[ref]: ./new.assets/a.png'));
+    assert.ok(content.includes('https://example.com/old.assets/a.png'));
+    assert.ok(content.includes('```md\n![example](./old.assets/a.png)\n```'));
+    assert.ok(content.includes('`![inline](./old.assets/a.png)`'));
+    assert.equal((await vault.readBinary('elsewhere/new.assets/a.png')).content.toString(), 'image');
+  });
+
+  check('a note with assets cannot be renamed to a different format', async () => {
+    await assert.rejects(() => vault.move('elsewhere/new.md', 'elsewhere/new.txt'), /keep its .md extension/);
+    assert.equal(await vault.exists('elsewhere/new.md'), true);
+    assert.equal(await vault.exists('elsewhere/new.assets/a.png'), true);
+    assert.equal(await vault.exists('elsewhere/new.txt'), false);
+  });
+
+  check('move refuses folders and the Vault root', async () => {
+    await assert.rejects(() => vault.move('', 'moved'), /Vault root/);
+    await assert.rejects(() => vault.move('rename', 'moved'), /not a folder/);
   });
 
   const results = [];

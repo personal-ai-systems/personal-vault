@@ -8,6 +8,11 @@ The files in that folder are the product. A person must be able to open the fold
 
 The API and MCP server are a helpful doorway to those same files. They must not create a second hidden storage system.
 
+Local applications may use the shared `personal-vault` library directly. A local
+Assistant does not need an MCP server or public hosting. Vault owns neutral file
+operations; Assistant owns meaning and workflows. Remote clients can use an
+authenticated API/MCP connection. Neither mode changes the readable folder.
+
 ## Keep it simple
 
 - Markdown notes and normal attachments are the source of truth.

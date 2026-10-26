@@ -51,7 +51,7 @@ Personal Vault is not intended to be tied to macOS. The current implementation i
 | Platform or access path | Status | How it uses the Vault |
 | --- | --- | --- |
 | macOS Apple Silicon desktop app | **Preview available now** | Bundles the UI and local MCP server; files stay in the selected folder. |
-| Core MCP server on macOS, Windows and Linux | **Available from source; verified in CI on all three platforms** | Runs beside a readable folder using Node.js. Packaged service installers are still to be implemented. |
+| Vault MCP server on macOS, Windows and Linux | **Available from source; verified in CI on all three platforms** | Runs beside a readable folder using Node.js. Packaged service installers are still to be implemented. |
 | Windows desktop app | **Coming soon** | Planned Electron installer using the same UI, MCP tools and ordinary files. |
 | Linux desktop app | **Coming soon** | Planned package using the same UI, MCP tools and ordinary files. |
 | Intel Mac desktop app | **Coming soon** | Requires a separate signed build and installation testing. |
@@ -188,7 +188,7 @@ You can organise the folder in a way that makes sense to you. Attachments stay a
 - Files remain in the folder you select unless you move, share or back them up yourself.
 - The local service listens on the host computer's loopback interface rather than exposing the Vault to the network by default.
 - The preview has no built-in cloud sync or backup. Keep your own backup.
-- The current build is unsigned and not notarized.
+- The preview is ad-hoc signed, not Apple Developer ID signed or notarized.
 - Automatic updates and Windows, Linux and Intel Mac installers are not available yet.
 - This is an early test release, not a promise that every workflow is production-ready.
 
@@ -219,6 +219,28 @@ npm run mcp:vault
 ```
 
 The local endpoint is `http://127.0.0.1:8788/mcp`. Use a temporary folder for development and tests — never point test commands at a real Vault.
+
+### Use the file library locally
+
+A local application can use the same file operations without starting a server:
+
+```js
+import { createVault } from 'personal-vault';
+
+const vault = createVault({ root: '/path/to/a/test-folder' });
+await vault.writeText('Daily/first-note.md', '# A readable note\n');
+const note = await vault.readText('Daily/first-note.md');
+console.log(note.content);
+```
+
+The library also reads binary attachments, appends to readable text files,
+checks paths, creates folders and moves notes with their adjacent attachments.
+Paths, including `info(path)`, are relative to the selected folder. Create never
+overwrites an existing file; `writeText(path, content, true)` updates one.
+
+Install the package from a local checkout or an exact Git revision; an npm
+registry release is not claimed. Health, Today and Planner belong to consuming
+applications. MCP remains available, but is not mandatory for local use.
 
 ### Import an OpenAI export from the command line
 

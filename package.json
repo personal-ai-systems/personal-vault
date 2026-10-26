@@ -14,8 +14,14 @@
     "node": ">=24"
   },
   "exports": {
-    ".": "./lib/index.mjs",
-    "./core": "./lib/index.mjs"
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.mjs"
+    },
+    "./core": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.mjs"
+    }
   },
   "files": [
     "lib/",

@@ -2,7 +2,12 @@
 
 Packaging lives in sibling `personal-vault-ui`, in `scripts/build-desktop.mjs` and `desktop/`.
 
-The UI build copies this checkout's MCP server and locked production dependencies into its Mac arm64 application. It runs this repository's tests first. Source repositories stay separate; installation is one app. See `../personal-vault-ui/docs/desktop-macos.md` (from the parent workspace) for build/install details.
+The UI build installs the exact Vault package revision recorded in
+`personal-vault-ui/desktop/vault-dependency.json`. The server and file library
+come from that same package, not hand-copied source files. The build checks the
+revision, package exports and temporary server startup before packaging. Source
+repositories stay separate; installation is one app. See
+`../personal-vault-ui/docs/desktop-macos.md` for build/install details.
 
 The desktop runtime sets `PERSONAL_VAULT_ROOT` to the user's selected existing folder, `MCP_HOST=127.0.0.1`, a dynamically selected `MCP_PORT`, and `PERSONAL_VAULT_TOKEN`. When a token is set, all HTTP endpoints require `Authorization: Bearer <token>`. Tokenless CLI behaviour is retained for existing local integrations. The root must exist before startup and is canonicalised.
 

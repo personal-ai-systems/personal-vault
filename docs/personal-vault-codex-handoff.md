@@ -74,11 +74,15 @@ The repository split exists, but the code boundary is not fully complete:
 4. Remove the legacy Vault tools only as a separately reviewed breaking change,
    after installed clients and connectors are confirmed to use the Assistant or
    generic file tools.
-5. Some Personal Assistant web routes still access its selected Vault folder
-   directly. Their migration belongs in the Assistant repository, one bounded
-   route at a time.
+5. Local Personal Assistant access through the shared Vault library is approved
+   (26 October 2026). It does not require an MCP server or public hosting. Its web
+   routes use one configured library layer; discovery/watch infrastructure and
+   standalone scripts have separately documented exceptions. Do not replace
+   this local mode with mandatory network access.
 
-Do not describe this transition debt as a completed strict API boundary.
+This is a shared-library ownership boundary, not a process security boundary.
+Do not describe it as a completed strict API boundary. People and local editors
+may still work with their own files directly.
 
 ## Verification rules
 
