@@ -17,6 +17,14 @@
     ".": "./lib/index.mjs",
     "./core": "./lib/index.mjs"
   },
+  "files": [
+    "lib/",
+    "mcp/",
+    "scripts/",
+    "LICENSE",
+    "README.md",
+    "AGENTS.md"
+  ],
   "scripts": {
     "mcp:vault": "node mcp/personal-vault-server.mjs",
     "import:openai": "node scripts/import-openai-export.mjs",
