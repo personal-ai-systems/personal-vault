@@ -14,6 +14,125 @@ async function fixture(run) {
 }
 async function rows(root) { return (await readFile(path.join(root, 'indexes/context-index/index.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse); }
 
+test('reviewed intent preserves primary need versus optional expansion across paraphrases and scoped follow-ups', () => fixture(async (root, put) => {
+  // Synthetic product evidence: aliases are authored data, not an engine
+  // translation dictionary. This checks evidence available to an answer,
+  // not an actual model invocation or automatic topic selection by a host.
+  const original = '# Narration request\nМне не нравится мой голос и акцент. Перевод необязателен.\n';
+  const brief = '# Current narration intent\nThe primary need is a chosen narration voice, even in one language.\n';
+  const summary = 'Primary pain: dislike of recorded voice/accent/delivery, including one-language use. In this use case, retain a voice similar to the creator with their desired pronunciation. Optional expansion: two or three languages. Own media and story; face optional. Instagram is the primary channel with a short Reel; Facebook carries fuller commentary and narration. No proven integration, customer demand or permission to publish.';
+  await put('raw/narration.md', original);
+  await put('structured/intent.md', brief);
+  await put('raw/diagnosis.md', '# Retrieval diagnosis\ncreator voice accent change own voice Instagram multilingual\n');
+  await put('raw/unrelated.md', '# Unrelated\nWhere is the router? A voice interface has a pain point.\n');
+  const annotation = { path: 'structured/intent.md', sourceSha256: sha(brief), contexts: ['creator.workflow'], currentFor: ['creator.workflow'], aliases: ['creator voice accent change own voice Instagram multilingual', 'акцент голос озвучка', 'where is the pain point', 'в чём проблема с голосом'], summary, reviewState: 'assistant-reviewed', provenance: { kind: 'fixture', evidence: 'raw/narration.md' } };
+  await put('structured/assistant-infrastructure/context-annotations.jsonl', JSON.stringify(annotation) + '\n');
+  await refreshContextIndex({ root });
+  const queries = [
+    { query: 'creator voice accent change own voice Instagram multilingual' },
+    { query: 'акцент голос озвучка', contexts: ['creator.workflow'] },
+    { query: 'where is the pain point?', contexts: ['creator.workflow'] },
+    { query: 'в чём проблема с голосом?', contexts: ['creator.workflow'] },
+  ];
+  for (const query of queries) {
+    const result = await getContext({ root, ...query, limit: 3 });
+    assert.equal(result.results[0].path, 'structured/intent.md', query.query);
+    assert.equal(result.results[0].contentSha256, sha(brief));
+    assert.equal(result.results[0].summaries[0].summary, summary);
+    assert.match(result.results[0].summaries[0].summary, /including one-language use.*voice similar to the creator.*Optional expansion.*face optional.*Instagram is the primary channel.*Facebook carries fuller commentary and narration.*No proven integration/s);
+  }
+  // Rebuild/resume uses the same authored correction; it is not a fresh-client
+  // acceptance test, and original bytes must not be translated or replaced.
+  await rm(path.join(root, 'indexes/context-index/index.jsonl'));
+  await refreshContextIndex({ root });
+  assert.equal((await getContext({ root, ...queries[3] })).results[0].summaries[0].summary, summary);
+  assert.equal(await readFile(path.join(root, 'raw/narration.md'), 'utf8'), original);
+  await put('structured/intent.md', '# Corrected intent\nThe first channel decision has changed; re-review required.\n');
+  const stale = await getContext({ root, ...queries[3] });
+  assert.ok(stale.warnings.some((warning) => warning.path === 'structured/intent.md' && warning.reason === 'source-changed'));
+  assert.ok(!stale.results.some((item) => item.summaries.some((item) => item.summary === summary)));
+}));
+
+test('default passage retention recovers a mid-document correction, and an explicit cap reports its loss', () => fixture(async (root, put) => {
+  // Synthetic long note: 96 routine paragraphs with one unique correction in the
+  // middle. The old 32-passage default sampled the middle away, so a matching
+  // source hash still could not reach the correction.
+  const token = 'ZQ7CORRECTIONTOKEN';
+  const total = 96;
+  const at = 43;
+  const paragraphs = [];
+  for (let i = 0; i < total; i++) paragraphs.push(`Paragraph ${i + 1} records routine background detail for the historical review, numbered ${i + 1}.`);
+  paragraphs[at] = `Paragraph ${at + 1} records the unique correction ${token}: the approved current scope is rebuildable indexing and model-independent retrieval, not a readable-files-only boundary.`;
+  const note = `# Long synthetic review note\n\n${paragraphs.join('\n\n')}\n`;
+  const relative = 'raw/2026/11/2026-11-07-long-note.md';
+  await put(relative, note);
+
+  // (1) An explicit 32-passage cap reproduces the old behaviour and must admit it.
+  const capped = await refreshContextIndex({ root, maxPassagesPerFile: 32 });
+  assert.equal(capped.counts.cappedFiles, 1);
+  assert.ok(capped.counts.omittedPassages > 0);
+  const cappedRow = (await rows(root)).find((row) => row.path === relative);
+  assert.equal(cappedRow.passages.length, 32);
+  assert.ok(!cappedRow.passages.some((passage) => passage.excerpt.includes(token)), 'a capped index cannot see the middle correction');
+  const cappedQuery = await getContext({ root, query: token, limit: 5 });
+  assert.equal(cappedQuery.results.length, 0);
+  assert.equal(cappedQuery.passageCoverageComplete, false);
+
+  // (2) The default keeps every computed passage, so the same source resolves.
+  const rebuilt = await refreshContextIndex({ root });
+  assert.ok(rebuilt.readFiles > 0, 'changed extractor settings must not reuse the capped cache');
+  const row = (await rows(root)).find((item) => item.path === relative);
+  assert.equal(row.passages.length, row.passageCount);
+  assert.equal(row.omittedPassages, 0);
+  const found = await getContext({ root, query: token, limit: 5 });
+  assert.equal(found.results.length, 1);
+  const [result] = found.results;
+  assert.equal(result.path, relative);
+  assert.equal(result.contentSha256, sha(note));
+  assert.match(result.excerpt, new RegExp(token));
+  assert.equal(result.freshness, 'verified');
+  assert.equal(result.indexedSourceTruncated, false);
+  // The stored range must contain the correction line, not merely the file head.
+  const correctionLine = note.split('\n').findIndex((line) => line.includes(token)) + 1;
+  assert.ok(result.locator.startLine <= correctionLine && correctionLine <= result.locator.endLine, `locator ${result.locator.startLine}-${result.locator.endLine} excludes line ${correctionLine}`);
+  assert.equal(found.passageCoverageComplete, true);
+  // Returning more evidence must not change the documented result shape.
+  for (const key of ['path', 'contentSha256', 'locator', 'excerpt', 'excerptKind', 'excerptTruncated', 'freshness', 'score', 'matchedTerms', 'summaries', 'indexedSourceTruncated', 'contentMode']) assert.ok(key in result, `result must still expose ${key}`);
+  assert.deepEqual(Object.keys(result.locator).sort(), ['endLine', 'heading', 'role', 'startLine']);
+
+  // (3) An unchanged refresh reuses the cache and still resolves the correction.
+  const reused = await refreshContextIndex({ root });
+  assert.equal(reused.changed, false);
+  assert.ok(reused.reusedFiles > 0);
+  assert.equal((await getContext({ root, query: token, limit: 5 })).results[0].contentSha256, sha(note));
+
+  // (4) A caller character budget still bounds the response without hiding the match.
+  const bounded = await getContext({ root, query: token, limit: 5, maxChars: 120 });
+  assert.ok(bounded.charactersReturned <= 120, `charactersReturned ${bounded.charactersReturned} exceeded maxChars`);
+  assert.equal(bounded.results[0].path, relative);
+  assert.equal(bounded.results[0].excerptTruncated, true);
+
+  // (5) Lowering the excerpt limit loses text inside a stored passage, so coverage
+  // must report that honestly instead of claiming complete passages.
+  const shortExcerpts = await refreshContextIndex({ root, excerptChars: 80 });
+  assert.ok(shortExcerpts.counts.excerptTruncatedPassages > 0);
+  const shortQuery = await getContext({ root, query: token, limit: 5 });
+  assert.equal(shortQuery.passageCoverageComplete, false);
+  assert.equal(shortQuery.results[0].excerptTruncated, true);
+  // The per-result flag must carry stored excerpt loss, not only whole-passage or
+  // whole-file omission, or a caller would read a cut source as complete.
+  assert.equal(shortQuery.results[0].indexedSourceTruncated, true);
+
+  // (6) Metadata-only sources stay metadata-only and add no excerpt loss.
+  const metadata = await refreshContextIndex({ root, excerptChars: 1600, metadataOnly: ['raw/2026/11'] });
+  const metaRow = (await rows(root)).find((item) => item.path === relative);
+  assert.equal(metaRow.contentMode, 'metadata-only');
+  assert.deepEqual(metaRow.passages, []);
+  assert.equal(metaRow.omittedPassages, 0);
+  assert.equal(metadata.counts.excerptTruncatedPassages, 0);
+  assert.equal(metadata.counts.metadataOnlyFiles, 1);
+}));
+
 test('mixed conversation retrieves precise passage and source revision', () => fixture(async (root, put) => {
   const text = '# Mixed conversation\n\n## 1. user — 2026-01-02\nPlease update the resume with verified architecture experience.\n\n## 2. user — 2026-01-03\nNow help with school riddles about animals.\n';
   await put('raw/2026/01/2026-01-02-conversation.md', text);

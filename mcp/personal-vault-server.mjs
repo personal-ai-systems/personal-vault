@@ -189,16 +189,25 @@ function createVaultServer(context) {
   });
   const fileToolName = (operation) => `vault_files_${operation}`;
 
+  // Some clients render only result.content[].text and never see structuredContent,
+  // so a bare acknowledgement leaves the model holding "Read notes/x.md." with no body,
+  // no list paths and no search hits. Clients that do read structuredContent are
+  // unaffected either way. Mirror the same object into text as JSON, exactly as
+  // vault_context_get already does, so text-only and structured clients get one
+  // identical contract. structuredContent is unchanged; authorization and path checks
+  // run before this is reached; binary attachment data is never mirrored here.
+  const textAndStructured = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value });
+
   // Tool names are always underscored: several model providers reject dots in
   // function names before the model is ever called.
   server.registerTool(fileToolName('list'), { title: 'List files', inputSchema: { path: z.string().optional(), recursive: z.boolean().optional(), limit: z.number().int().min(1).max(1000).optional() } }, async ({ path: target = '', recursive = false, limit = 200 }, extra) => {
     if (!(await allowed(extra))) return authError(extra);
-    try { const items = await list(target, recursive, limit); return { content: [{ type: 'text', text: `Found ${items.length} item(s).` }], structuredContent: { path: vault.cleanPath(target), items } }; }
+    try { const items = await list(target, recursive, limit); return textAndStructured({ path: vault.cleanPath(target), items }); }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
   });
   server.registerTool(fileToolName('read'), { title: 'Read a text file', inputSchema: { path: z.string().min(1) } }, async ({ path: target }, extra) => {
     if (!(await allowed(extra))) return authError(extra);
-    try { return { content: [{ type: 'text', text: `Read ${target}.` }], structuredContent: await readText(target) }; }
+    try { const file = await readText(target); return textAndStructured(file); }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
   });
   server.registerTool(fileToolName('create'), { title: 'Create a text file', inputSchema: { path: z.string().min(1), content: z.string() } }, async ({ path: target, content }, extra) => {
@@ -251,7 +260,7 @@ function createVaultServer(context) {
   });
   server.registerTool(fileToolName('search'), { title: 'Search text files', inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(100).optional() } }, async ({ query, limit = 20 }, extra) => {
     if (!(await allowed(extra))) return authError(extra);
-    try { const matches = await search(query, limit); return { content: [{ type: 'text', text: `Found ${matches.length} match(es).` }], structuredContent: { query, matches } }; }
+    try { const matches = await search(query, limit); return textAndStructured({ query, matches }); }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
   });
   server.registerTool('vault_context_get', {
@@ -294,7 +303,7 @@ function createVaultServer(context) {
   // search_vault kept as the historical name of vault_files_search.
   server.registerTool('search_vault', { title: 'search_vault', description: 'Search readable Vault files.', inputSchema: { query: z.string().min(2), limit: z.number().int().min(1).max(20).optional() } }, async ({ query, limit = 5 }, extra) => {
     if (!(await allowed(extra))) return authError(extra);
-    try { const matches = await search(query, limit); return { content: [{ type: 'text', text: matches.length ? `Found ${matches.length} match(es).` : 'No matches found.' }], structuredContent: { query, matches } }; }
+    try { const matches = await search(query, limit); return textAndStructured({ query, matches }); }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
   });
   server.registerTool('get_today_plan', { title: 'get_today_plan', description: 'Read the current Today plan file.', inputSchema: {} }, async (_args, extra) => {

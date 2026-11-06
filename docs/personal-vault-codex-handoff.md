@@ -8,6 +8,87 @@ Assistant. Older mixed-product plans cannot expand its responsibilities.
 
 Personal Vault is a local-first, human-readable folder. The files are the product.
 
+## Tool response compatibility — 7 November 2026
+
+Active in the running service and verified from Moltis, 09:37 Sydney.
+`vault_files_list`, `vault_files_read`, `vault_files_search`, the legacy
+`search_vault` alias and the pre-existing `vault_context_get` now return the same
+object serialized as JSON in `content[].text` as well as in `structuredContent`.
+Rationale: hosts such as Moltis render text only and drop `structuredContent`, so
+those tools previously delivered an acknowledgement sentence with no body, no
+list paths and no search hits.
+
+Scope is those five surfaces. `structuredContent`, schemas, authorization and path
+checks are unchanged; `vault_files_read_binary` keeps `dataBase64`
+structured-only, and the write, archive, trash, restore, deleted-listing and
+capture tools are untouched. `vault_files_list_deleted` and the capture tools
+still return acknowledgement-only text as a known gap outside this change.
+Failures are unchanged: `isError` with plain non-JSON text and no
+`structuredContent`.
+
+One `textAndStructured` helper beside the tool registrations serves the four file
+surfaces. The smoke fixture asserts parity both ways: `JSON.parse(text)` equals
+`structuredContent` for a successful list, read, search and `search_vault`, the
+parsed body and paths are real rather than an acknowledgement, and a failed read
+stays `isError` with no `structuredContent` and non-JSON text. Authentication is
+pinned rather than inherited — the fixture sets `MCP_SERVICE_TOKENS` with explicit
+`MCP_TRUST_LOCALHOST=false`, `MCP_GOOGLE_AUTH=false` and `MCP_CONTEXT_FILE=''` —
+because an ambient `MCP_TRUST_LOCALHOST=true` makes the unauthenticated
+`initialize` succeed with HTTP 200, so the 401 expectation would **fail**, not
+pass vacuously. Same unauthenticated call returns HTTP 200 with trust on and
+HTTP 401 with it off. That is test isolation only; production authentication is
+untouched.
+
+Three surfaces stay distinct: the **source** carries the fallback, the
+**running** HTTP service on `127.0.0.1:8788` serves it after activation, and the
+**desktop** app consumes the same library rather than this HTTP adapter. No
+desktop build, release or verification was performed.
+
+## Passage retention and coverage honesty — 7 November 2026
+
+Active in the source and now live in the rebuilt index.
+
+Before: `extract()` kept only 32 passages per file by uniform spread sampling, so
+a 97-passage note lost 65 passages including its middle, and every stored excerpt
+was cut to 300 characters against an extraction block of up to 1600. A matching
+source hash was therefore not enough to reach a mid-document correction. Coverage
+reporting was half-honest: `passageCoverageComplete` did account for dropped whole
+passages and whole-file text truncation, but it ignored excerpt cuts entirely, so
+a passage stored as a fragment still counted as complete.
+
+Now: every computed passage is retained by default, with the 4 MiB per-file byte
+limit as the real bound on a source's contribution. `maxPassagesPerFile` remains
+an explicit opt-in cap of 2–1000 whose loss is reported (`counts.cappedFiles`,
+`counts.omittedPassages`, and `indexedSourceTruncated` per result). The stored
+excerpt default is 1,600 characters and `counts.excerptTruncatedPassages` now
+feeds `passageCoverageComplete`, so an excerpt cut makes coverage honestly
+incomplete. `indexedSourceTruncated` also carries stored excerpt loss, not only
+omitted passages or file bytes. `extractorVersion` moved to 2 so an existing index
+rebuilds instead of inheriting old settings; caller `limit`/`maxChars` caps and
+the result shape are unchanged. A pre-existing cache with no
+`excerptTruncatedPassages` count reports coverage incomplete until refresh, which
+is deliberate.
+
+Tests: 20 context-index tests and 16 Codex-memory hook tests pass, full
+suite exit 0.
+
+Live reindex verified by the coordinator: 67,157 passages, 0 whole passages
+omitted, 632 excerpt-truncated passages, 0 text-truncated files, and the known
+pre-existing symlink scan error retained. `vault_context_get` now returns the AI
+roadmap at rank 1 and the formerly omitted `structured/projects/ai/current-plan.md`
+amendment at rank 2, lines 248–257, matching hash `941c123d`, amendment visible
+in full.
+
+Earlier isolated-copy measurement of the same change: 13.06 MB / 25,309 passages
+/ 41,785 omitted before, 31.14 MB / 67,094 passages / 0 omitted after with 632
+excerpt cuts, refresh about a tenth slower. That is one local corpus, not a
+universal multiplier; lookup cost grows with index size because retrieval loads
+and scans the whole file.
+
+Source tests and the live local service do not establish a published or installed
+desktop release. Remote source publication is recorded in Git history; desktop
+packaging remains unverified for this change.
+
 ## English MVP presentation — 7 November 2026
 
 The owner confirmed English for the MVP interface, product documentation,

@@ -33,6 +33,53 @@ Markdown and plain-text sources receive bounded extractive passages. An
 owner-configured `metadataOnly` path can keep a source or subtree unparsed.
 The manifest and source records report these boundaries explicitly.
 
+## Extraction budgets
+
+A source's extractable text is read up to `maxTextBytes` (default 4 MiB). That
+byte limit, not a passage count, is what bounds how much one source contributes.
+
+By default every computed passage is stored. Passages are text blocks split at
+blank lines and headings; a block is flushed once it crosses 1,600 characters, so
+a block can end up longer than 1,600. Stored excerpts are capped at `excerptChars`
+characters, default 1,600, a limit chosen to match the block budget. Blocks or
+lines that exceed it are still stored only in part: those passages are counted in
+`counts.excerptTruncatedPassages`, flagged `excerptTruncated` on the passage and
+result, and reflected in each result's `indexedSourceTruncated`. A smaller
+`excerptChars` trades recall inside a passage for a smaller cache; it does not hide
+the loss.
+
+The excerpt cap limits what the *index stores*, not what the source contains. The
+original file is unchanged and remains the authoritative full text; a truncated
+excerpt is a navigation aid that points at it. Broad file reading and ordinary
+search stay available when a result is insufficient.
+
+An owner can set an explicit passage cap of 2-1000 per file with
+`maxPassagesPerFile`. A cap is the only setting that drops whole passages; it
+retains a spread across the source including its end, and the manifest reports
+`counts.cappedFiles` and `counts.omittedPassages`. Capping is a deliberate
+recall reduction, not a default.
+
+Retaining every passage costs cache, build time and lookup cost. Retrieval loads
+and parses the whole index file on each lookup and scans its rows, so both latency
+and memory grow with corpus size and with the number of stored passages; only the
+text returned to a caller is bounded, by `limit`, `maxChars`, pagination and source
+interleaving. Cache growth is therefore not free at query time.
+
+Measured on one isolated copy of a single local Vault (4,569 sources, 1,353 text
+files): about 13 MB and 25,309 passages with the former 32-per-file default, about
+31 MB and 67,094 passages with every passage retained, and a refresh taking
+roughly a tenth longer. Those are timings for that corpus on that machine, not a
+universal multiplier or a general performance guarantee; treat them as one data
+point and measure the actual corpus rather than extrapolating.
+
+Settings take part in the configuration hash: changing `maxTextBytes`,
+`maxPassagesPerFile`, `excerptChars`, `metadataOnly`, the source roots, the
+annotations path or `extractorVersion` invalidates cached rows on the next
+refresh and forces re-extraction, rather than mixing old and new budgets in one
+index. A cache written before excerpt loss was counted reports
+`passageCoverageComplete` as false until that refresh rewrites its manifest;
+that conservative answer is intentional.
+
 Existing ChatGPT import indexes and capture ledgers remain historical evidence.
 This index does not manufacture a capture event or a missing conversation to
 make a source ledger look current. A file missing from an old import index can
@@ -121,8 +168,9 @@ Changed, missing or unavailable sources produce explicit warnings instead of
 serving an old excerpt as current. A successful query over an incomplete index
 still reports incomplete source-inventory coverage. `coverageComplete` describes
 that scan; `passageCoverageComplete` separately reports whether readable-text
-extraction omitted passages or truncated files. Neither flag guarantees that an
-answer is complete or that attachment contents were parsed. Results interleave
+extraction omitted passages, truncated files, or stored shorter excerpts than
+the source block. Neither flag guarantees that an answer is complete or that
+attachment contents were parsed. Results interleave
 ranked source groups so a long conversation does not crowd out other sources;
 remaining matching passages stay available through continuation.
 

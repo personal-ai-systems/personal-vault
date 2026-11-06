@@ -57,3 +57,43 @@ than falling back to a potentially overwriting move.
 
 Local library equivalents are `trash(relative)`, `listDeleted(limit?)` and
 `restoreDeleted(relative)`. They use the same readable paths and result shapes.
+
+## Text and structured result parity
+
+A response carries the same payload twice: a readable text block in the MCP
+`content` array and the identical JSON object in `structuredContent`. The text
+is the machine-readable payload itself, not an acknowledgement line. A client
+that reads only `content[].text` still receives the full result, and
+`JSON.parse(content[0].text)` equals `structuredContent`. A short
+`Read <path>.` acknowledgement with the payload hidden in `structuredContent` is
+a defect, not the contract; it made a working read look empty to text-only
+clients.
+
+This contract currently covers these five surfaces only:
+
+- `vault_files_list`
+- `vault_files_read`
+- `vault_files_search`
+- the legacy `search_vault` alias
+- `vault_context_get`, which already behaved this way
+
+It is **not** a blanket statement about every file tool. Nothing else changes:
+`vault_files_read_binary` keeps `dataBase64` structured-only, and the write,
+archive, trash, restore, deleted-listing and capture tools are unchanged. The
+tools that still return an acknowledgement sentence with the payload only in
+`structuredContent` (`vault_files_list_deleted` and the capture tools) are a
+known remaining gap, not covered by this contract.
+
+Failures are unchanged: an error is still reported through `isError` with a plain
+non-JSON message and no `structuredContent`. Parity applies to successful
+results.
+
+Parity is checkable rather than assumed: the returned text parses as JSON and the
+parsed object equals `structuredContent`. Tool names, arguments and readable
+paths are unchanged; only the text form is specified.
+
+Byte identity is a separate question that this contract does not answer. A
+read result reports the file's content at read time and its timestamps, but the
+text response does not return a `contentSha256` field, and a timestamp is not
+proof that the bytes are the ones a client expects. Verify content by reading it
+or by hashing the file out of band; do not infer integrity from a modified time.

@@ -22,6 +22,15 @@ const port = reservation.address().port;
 await new Promise((resolve) => reservation.close(resolve));
 const child = spawn(process.execPath, ['mcp/personal-vault-server.mjs'], { cwd: root, env: { ...process.env, PERSONAL_VAULT_ROOT: fixture, MCP_HOST: host, MCP_PORT: String(port) }, stdio: 'ignore' });
 
+async function reservePort() {
+  const probe = createServer();
+  probe.listen(0, host);
+  await once(probe, 'listening');
+  const free = probe.address().port;
+  await new Promise((resolve) => probe.close(resolve));
+  return free;
+}
+
 async function waitForServer() {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -66,6 +75,27 @@ try {
   const attached = await call('attach', { markdownPath: 'raw/2026/08/hello.md', name: 'sample.bin', dataBase64: Buffer.from('sample').toString('base64') });
   assert.equal(attached.structuredContent.assetPath, 'raw/2026/08/hello.assets/sample.bin');
   assert.equal((await call('search', { query: 'readable' })).structuredContent.matches[0].path, 'raw/2026/08/hello.md');
+
+  // Text-only clients: a host such as Moltis renders content[].text and drops
+  // structuredContent, so every data-returning file tool must carry its payload in
+  // text as JSON as well. Fixtures here are temporary and hold no private data.
+  const textOf = (result) => result.content.filter((part) => part.type === 'text').map((part) => part.text).join('');
+  const readTextOnly = await call('read', { path: 'raw/2026/08/hello.md' });
+  assert.deepEqual(JSON.parse(textOf(readTextOnly)), readTextOnly.structuredContent, 'read: text must equal structuredContent');
+  assert.match(JSON.parse(textOf(readTextOnly)).content, /readable note/, 'read: a text-only client must receive the actual file body');
+  const listTextOnly = await call('list', { path: 'raw/2026/08' });
+  assert.deepEqual(JSON.parse(textOf(listTextOnly)), listTextOnly.structuredContent, 'list: text must equal structuredContent');
+  assert.equal(JSON.parse(textOf(listTextOnly)).items.some((item) => item.path === 'raw/2026/08/hello.md'), true, 'list: a text-only client must receive the actual paths');
+  const searchTextOnly = await call('search', { query: 'readable' });
+  assert.deepEqual(JSON.parse(textOf(searchTextOnly)), searchTextOnly.structuredContent, 'search: text must equal structuredContent');
+  assert.equal(JSON.parse(textOf(searchTextOnly)).matches[0].path, 'raw/2026/08/hello.md', 'search: a text-only client must receive the actual hits');
+  const legacySearchTextOnly = await client.callTool({ name: 'search_vault', arguments: { query: 'readable' } });
+  assert.deepEqual(JSON.parse(textOf(legacySearchTextOnly)), legacySearchTextOnly.structuredContent, 'search_vault: text must equal structuredContent');
+  assert.equal(JSON.parse(textOf(legacySearchTextOnly)).matches[0].path, 'raw/2026/08/hello.md');
+  const readMissing = await call('read', { path: 'raw/2026/08/missing.md' });
+  assert.equal(readMissing.isError, true);
+  assert.equal(readMissing.structuredContent, undefined, 'an error must not gain a structured payload');
+  assert.throws(() => JSON.parse(textOf(readMissing)), 'error text stays a plain message, not a JSON payload');
   const indexedVault = createVault({ root: fixture });
   await indexedVault.refreshContextIndex();
   const indexPath = path.join(fixture, 'indexes/context-index/index.jsonl');
@@ -144,8 +174,38 @@ try {
     assert.equal(await readFile(path.join(outside, 'outside.md'), 'utf8'), 'outside fixture');
     assert.equal((await call('search', { query: 'outside fixture' })).structuredContent.matches.length, 0);
   } finally { await rm(outside, { recursive: true, force: true }); }
+
+  // Authorization is unchanged: an unauthenticated caller is still challenged, and an
+  // authorized one now also receives the payload as JSON text. A second instance keeps
+  // the open fixture server above on its existing behaviour.
+  const authPort = await reservePort();
+  const authRoot = await mkdtemp(path.join(tmpdir(), 'personal-vault-auth-smoke-'));
+  await writeFile(path.join(authRoot, 'note.md'), 'guarded fixture body\n');
+  // Auth settings are pinned, not inherited: trusting loopback or a developer's Google
+  // flags from the ambient shell would silently turn the 401 assertion off.
+  const authChild = spawn(process.execPath, ['mcp/personal-vault-server.mjs'], { cwd: root, env: { ...process.env, PERSONAL_VAULT_ROOT: authRoot, MCP_HOST: host, MCP_PORT: String(authPort), MCP_SERVICE_TOKENS: 'fixture-service-token', MCP_TRUST_LOCALHOST: 'false', MCP_GOOGLE_AUTH: 'false', MCP_CONTEXT_FILE: '' }, stdio: 'ignore' });
+  try {
+    const authBase = `http://${host}:${authPort}`;
+    const authDeadline = Date.now() + 10_000;
+    while (Date.now() < authDeadline) {
+      try { if ((await fetch(`${authBase}/status`)).ok) break; } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const accept = 'application/json, text/event-stream';
+    const initialize = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'text-only-smoke', version: '1.0.0' } } };
+    const denied = await fetch(`${authBase}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept }, body: JSON.stringify(initialize) });
+    assert.equal(denied.status, 401, 'an unauthenticated call is still challenged');
+    assert.match((await denied.json()).error.message, /service token|Sign in/);
+    const headers = { 'content-type': 'application/json', accept, authorization: 'Bearer fixture-service-token' };
+    const authorized = await fetch(`${authBase}/mcp`, { method: 'POST', headers, body: JSON.stringify(initialize) });
+    assert.equal(authorized.status, 200);
+    assert.equal((await authorized.json()).result.serverInfo.name, 'personal-vault');
+    const guarded = await (await fetch(`${authBase}/mcp`, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'vault_files_read', arguments: { path: 'note.md' } } }) })).json();
+    assert.equal(guarded.result.structuredContent.content, 'guarded fixture body\n', 'structuredContent is unchanged under auth');
+    assert.deepEqual(JSON.parse(guarded.result.content[0].text), guarded.result.structuredContent, 'an authorized text-only client also receives the body as JSON');
+  } finally { authChild.kill('SIGTERM'); await rm(authRoot, { recursive: true, force: true }); }
   await client.close();
-  console.log('Personal Vault smoke test passed: one /mcp endpoint, underscore tool names, readable files, search, attachments, archive, recoverable delete and restore.');
+  console.log('Personal Vault smoke test passed: one /mcp endpoint, underscore tool names, readable files, search, attachments, archive, recoverable delete and restore, and one identical text/structured contract for text-only clients.');
 } finally {
   child.kill('SIGTERM');
   await rm(fixture, { recursive: true, force: true });
