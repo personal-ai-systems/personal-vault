@@ -27,6 +27,8 @@
     "lib/",
     "mcp/",
     "scripts/",
+    "docs/product-boundary.md",
+    "docs/personal-vault-target-state-review.md",
     "LICENSE",
     "README.md",
     "AGENTS.md"

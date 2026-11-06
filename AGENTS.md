@@ -2,7 +2,12 @@
 
 ## The idea
 
-Personal Vault is a normal folder that belongs to its user.
+Personal Vault is a user-owned memory store, independent of Personal Assistant.
+Read [the current product boundary](docs/product-boundary.md) before making
+architecture, positioning or UI-scope decisions. The independent file browser
+belongs to Vault; daily planning, interpretation and execution do not.
+
+The memory lives in a normal folder that belongs to its user.
 
 The files in that folder are the product. A person must be able to open the folder in Finder, read a note in any Markdown editor, move it, back it up and understand what is there without an app or an account.
 
@@ -32,6 +37,11 @@ authenticated API/MCP connection. Neither mode changes the readable folder.
 5. Do not commit personal files, tokens, backups or logs.
 
 ## Scope of this chat
+
+Current paired desktop UI redesign and continuation checklist:
+`../personal-vault-ui/docs/simple-ui-redesign-handoff.md`. It owns normal versus
+advanced presentation; file lifecycle operations remain in this repository.
+Do not confuse local redesign work with the published preview.3 archives.
 
 This conversation is for **Personal Vault development only**: this repository
 (file API, MCP server, scripts, docs) and the paired `personal-vault-ui`

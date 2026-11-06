@@ -20,3 +20,6 @@ You can open these files in Finder, Obsidian, VS Code or a normal text editor. T
 When you archive a file, Personal Vault moves it into `archive/YYYY-MM-DD/`. You can restore it later.
 
 Personal Assistant may read these files and create useful views, but the files remain yours and remain understandable without Personal Assistant.
+
+To connect an AI client through MCP, see [Connecting Codex and ChatGPT](connecting-ai-clients.md).
+Installing the desktop app does not register it in an AI client or automatically archive chats.

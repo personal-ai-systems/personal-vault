@@ -2,7 +2,12 @@
 
 **Keep your AI memory in a folder you own — not inside one model or app.**
 
-AI models are improving fast, but the useful context you build with them is still trapped inside separate apps. Personal Vault keeps your notes, decisions, project context and attachments as ordinary files in a folder you own. Read and edit them yourself, or connect compatible GPT, Claude, Gemini, DeepSeek and local-model clients to the same memory. Switch models without starting over — and keep your knowledge even if an app, subscription or provider disappears.
+AI models are improving fast, but the useful context you build with them is still trapped inside separate apps. Personal Vault keeps what you want to remember — conversations, experiences, decisions and attachments — as ordinary files in a folder you own. Read and edit them yourself, or connect compatible GPT, Claude, Gemini, DeepSeek and local-model clients to the same memory. Switch models without starting over — and keep your knowledge even if an app, subscription or provider disappears.
+
+Personal Vault is the memory store, not Personal Assistant or a daily dashboard.
+Its independent desktop client browses and edits the same files; interpretation,
+planning and agent workflows belong to consuming applications. See the
+[product boundary](docs/product-boundary.md).
 
 [**Download preview.3 for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.2.1-preview.3/Personal.Vault-0.2.1-preview.3-arm64.dmg)
 
@@ -80,6 +85,14 @@ The file is approximately 147 MB. You do not need Node.js, Terminal, an MCP clie
 1. Open the downloaded DMG.
 2. Drag **Personal Vault** into the **Applications** folder shown in the installer window.
 3. Eject the Personal Vault installer.
+
+**Updating an existing copy:** save notes and quit the app first, then choose
+**Replace** in Finder. Do not delete the old app first, keep two installed copies,
+or remove your Vault folder/settings. Reopen the installed app, check its version
+and the selected folder, then reconnect any local Codex session. The preview has
+no built-in auto-updater; replacing an ad-hoc-signed build may still require a new
+macOS security approval. Developer ID signing and Apple notarization are separate
+release requirements, not something reinstalling can fix.
 
 ### 4. Approve the first launch
 
