@@ -186,7 +186,8 @@ rewrite malformed historical headers as part of this change.
 
 **Resolved 30 October 2026** in `lib/index.mjs`. `slug()` now keeps Unicode
 letters, numbers and combining marks (normalised NFC) and replaces only unsafe
-characters, so a Cyrillic title produces `...-идеи.md` instead of `...-capture.md`.
+characters, so a title in a non-Latin script keeps its readable words in the
+filename instead of falling back to `...-capture.md`.
 It slices by code point and keeps the documented `capture` fallback for a title
 with no letters or digits. `capturePath()` no longer swallows listing failures
 (`list()` already reports an absent folder as empty, so the extra catch only hid

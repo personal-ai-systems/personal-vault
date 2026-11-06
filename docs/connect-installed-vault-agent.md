@@ -1,46 +1,51 @@
-# Codex: подключи установленный Personal Vault
+# Codex: connect the installed Personal Vault
 
-Выполни настройку сам на этом Mac. Не переустанавливай приложение и не запускай
-второй Vault-сервер. Ожидаемая папка: `/Users/<username>/Personal Vault`.
-Разрешены регистрация локального MCP в Codex и одна проверочная заметка.
+Complete the setup yourself on this Mac. Do not reinstall the app or start a
+second Vault server. Expected folder: `/Users/<username>/Personal Vault`.
+Registering the local MCP server in Codex and creating one test note are authorized.
 
-1. Найди запущенный процесс с путём:
+1. Find the running process whose path is:
    `/Applications/Personal Vault.app/Contents/Resources/vault/node_modules/personal-vault/mcp/personal-vault-server.mjs`.
-   Для его PID выполни `lsof -nP -a -p PID -iTCP -sTCP:LISTEN`.
-   Используй найденный loopback-порт; не угадывай 8788. Не выводи окружение и секреты.
+   For its PID, run `lsof -nP -a -p PID -iTCP -sTCP:LISTEN`.
+   Use the discovered loopback port; do not guess 8788. Do not print the
+   environment or secrets.
 
-2. Запроси `http://127.0.0.1:PORT/status`. Проверь `server=personal-vault`
-   и совпадение `root` с ожидаемой папкой. Если корень другой — останови запись
-   и сообщи несовпадение. Проверь MCP initialize и tools/list на `/mcp`.
-   При 401/403 не отключай авторизацию и не добывай токен из процесса.
+2. Request `http://127.0.0.1:PORT/status`. Verify `server=personal-vault`
+   and that `root` matches the expected folder. If the root differs, stop
+   writing and report the mismatch. Check MCP initialize and tools/list on
+   `/mcp`. On 401/403, do not disable authorization or extract a token from
+   the process.
 
-3. Если MCP доступен, проверь существующую конфигурацию и зарегистрируй:
+3. If MCP is available, inspect the existing configuration and register:
    `codex mcp add personal_vault --url http://127.0.0.1:PORT/mcp`
-   Подставь проверенный порт. Не меняй остальные серверы. Если имя занято другим
-   Vault — сообщи конфликт. Если CLI отсутствует, используй поддерживаемую
-   настройку MCP этого клиента, сохранив существующий config.toml.
+   Substitute the verified port. Do not change other servers. If the name
+   belongs to another Vault, report the conflict. If the CLI is unavailable,
+   use this client's supported MCP configuration, preserving the existing
+   config.toml.
 
-4. Сохрани через `capture_note` заметку «Проверка подключения» с текстом
-   `MCP-проверка-7429`. Прочитай возвращённый путь через `vault_files_read`.
-   Проверь точное совпадение текста и покажи путь. Если инструменты ещё не
-   появились в текущем чате, проверь через отдельный MCP SDK-клиент из зависимостей
-   приложения; не выдавай это за обновление инструментов текущего чата.
+4. Use `capture_note` to save a note titled "Connection check" with the text
+   `MCP-check-7429`. Read the returned path with `vault_files_read`.
+   Verify that the text matches exactly and show the path. If the tools have
+   not appeared in the current chat, verify through a separate MCP SDK client
+   from the app's dependencies; do not present this as an update to the
+   current chat's tools.
 
-5. Если MCP недоступен по технической причине, допустим явно названный локальный
-   режим библиотеки. Это не способ обходить отказ в авторизации. Проверь файл:
+5. If MCP is unavailable for a technical reason, an explicitly identified local
+   library mode is allowed. This is not a way to bypass an authorization denial.
+   Check this file:
    `/Applications/Personal Vault.app/Contents/Resources/vault/node_modules/personal-vault/lib/index.mjs`.
-   Загрузи через `pathToFileURL`, проверь `createVault`, укажи подтверждённый root,
-   сохрани через `captureNote({title,input})` и проверь через `readText`.
-   Не меняй файлы внутри `.app`. Если Node отсутствует, используй встроенный
-   executable приложения с `ELECTRON_RUN_AS_NODE=1`. Не устанавливай зависимости.
+   Load it through `pathToFileURL`, verify `createVault`, set the confirmed
+   root, save through `captureNote({title,input})` and verify with `readText`.
+   Do not change files inside `.app`. If Node is unavailable, use the app's
+   bundled executable with `ELECTRON_RUN_AS_NODE=1`. Do not install dependencies.
 
-6. Не перезаписывай существующие заметки, не создавай второй Vault, не открывай
-   порт в интернет и не обещай автоматический архив чатов. Для уже подключённого
-   MCP не переходи незаметно на filesystem. У старой сборки порт меняется после
-   перезапуска: сохрани минимальную локальную инструкцию повторного обнаружения
-   рядом с конфигурацией Codex, без токенов и личного содержимого.
+6. Do not overwrite existing notes, create a second Vault, expose the port to
+   the internet or promise an automatic chat archive. For an already connected
+   MCP client, do not silently switch to filesystem access. The old build's port
+   changes after a restart: save minimal local rediscovery instructions beside
+   the Codex configuration, without tokens or personal content.
 
-В конце ответь кратко: выбранный режим (MCP или библиотека), подтверждённая папка,
-путь проверочной заметки и результат чтения. Отдельно укажи, нужна ли новая сессия
-Codex для зарегистрированных инструментов. При блокировке назови точную причину;
-не перекладывай доступные тебе технические шаги на пользователя.
+Finish with a brief report: selected mode (MCP or library), confirmed folder,
+test-note path and readback result. State separately whether a new Codex session
+is needed for the registered tools. If blocked, name the exact reason; do not
+delegate technical steps you can perform yourself to the user.

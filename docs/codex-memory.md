@@ -14,13 +14,16 @@ It does not install a model, start a paid API or change personal task statuses.
    Retrieved source hashes are checked. Missing or changed sources are reported;
    the original remains available for broader reading. Full-source coverage and
    correct semantic interpretation are not implied by an index match.
-3. Each answer and question must begin with `Memory:` / `Память:`: which sources
+3. Each answer and question must begin with a visible memory disclosure: which sources
    were actually read, in what form, and the relevant short-term state. No
    retrieval must be disclosed as no retrieval. A receipt records paths, hashes,
    excerpt/checkpoint modes and limitations in `indexes/codex/retrieval/`.
-4. A final response without disclosure triggers at most one corrective continuation.
-   Supported `request_user_input` questions are checked before execution. This
-   validates presence, not the factual correctness of every statement in a header.
+4. The MVP adapter recognizes the fixed protocol label `Memory:` followed by
+   nonempty content in any language. An unrecognized
+   prefix triggers at most one corrective continuation for a final response;
+   supported `request_user_input` questions are checked before execution. This
+   is not a restriction on saved content or conversation languages. The check verifies a prefix, not a
+   meaningful disclosure or the factual correctness of its statements.
 5. When capture is explicitly enabled, new main-chat user messages and final
    assistant responses are saved as readable Markdown in `raw/YYYY/MM/` with
    session/turn provenance. Retries reuse identities instead of creating copies.
@@ -30,6 +33,14 @@ It does not install a model, start a paid API or change personal task statuses.
 Ordinary source text is labelled as evidence, not trusted host instructions.
 The complete injected context is bounded. A per-session receipt/review queue is
 readable under `indexes/codex/`; original dialogue does not depend on that cache.
+
+The MVP interface and public documentation are in English; original memory can
+use any language. See the [language boundary](product-boundary.md#mvp-language-boundary--7-november-2026).
+Do not introduce a user language profile or an English-only conversation
+requirement. The protocol label remains English like schema keys; the disclosure
+body and response are unrestricted. Unicode regression tests cover both final
+answers and question tools. Existing custom client instructions should use the
+same label before installing this revision; installation is a separate action.
 
 ## Install once for the local client
 

@@ -66,6 +66,29 @@ An easy-to-use file client is still required; this decision does not remove it.
 - Memory is the ordinary product term. Existing API/function names may retain
   compatibility names; do not break a connector to enforce UI vocabulary.
 
+## MVP language boundary — 7 November 2026
+
+The MVP interface, product messages, public documentation, agent instructions
+and code comments are in English. Additional interface/documentation languages
+are deferred until there is demonstrated demand; no language selector or
+localization framework is required for this MVP.
+
+This presentation choice does not restrict saved memory. Preserve user-authored
+files, conversations, titles, attachments, archives and authored indexes in
+their original language and script. Do not translate or rename them to match
+the interface. Multilingual fixtures remain necessary to verify preservation.
+
+The language of a conversation must not select a project, create a language
+profile, restrict access or determine which evidence is relevant. The consuming
+model interprets intent and chooses its reply language; the shared file/library/
+MCP contract remains independent of the language of the stored material.
+English schema keys and documentation do not require English content values.
+
+Unicode preservation does not establish cross-language semantic retrieval.
+The current context index uses lexical matching; any future semantic component
+must be evaluated with equivalent requests across languages and actual source
+recovery. A vector database is not a prerequisite imposed by this decision.
+
 ## Known compatibility exception, not approved target behaviour
 
 The Vault MCP currently retains legacy Assistant-facing tools and plan-review

@@ -9,6 +9,11 @@ Its independent desktop client browses and edits the same files; interpretation,
 planning and agent workflows belong to consuming applications. See the
 [product boundary](docs/product-boundary.md).
 
+The MVP interface and public documentation are in English. Your saved memory
+can use any language; original files, titles and archives are not translated.
+Additional interface languages are deferred until there is demand. See the
+[language boundary](docs/product-boundary.md#mvp-language-boundary--7-november-2026).
+
 For shared context across supported local Codex chats, see
 [automatic memory recovery and visible source disclosure](docs/codex-memory.md).
 This is an optional source-installed client adapter; it is not included in the

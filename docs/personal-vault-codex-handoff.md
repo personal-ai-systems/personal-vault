@@ -8,12 +8,44 @@ Assistant. Older mixed-product plans cannot expand its responsibilities.
 
 Personal Vault is a local-first, human-readable folder. The files are the product.
 
+## English MVP presentation — 7 November 2026
+
+The owner confirmed English for the MVP interface, product documentation,
+public agent instructions and code comments. User-authored memory, archives and
+indexes may use any language and remain unchanged. Future interface localization
+is deferred until there is demand. The language of a prompt must not choose a
+project or create a user language profile. See the authoritative
+[language boundary](product-boundary.md#mvp-language-boundary--7-november-2026).
+
+The connection guides have been translated with their commands, paths and dated
+release limitations preserved. Documentation examples use English; multilingual
+test data remains intentional evidence of Unicode preservation. The paired UI
+uses explicit English dates in Memory instead of the host's default language.
+
+The optional Codex adapter now uses one MVP protocol label, `Memory:`, with
+nonempty disclosure content in any language. Unicode tests cover questions and
+final answers; no language-specific label allowlist remains. This syntax check
+does not validate meaning. Intent-based context selection remains a separate
+follow-up and is not claimed as implemented by this change.
+No new language profile, localization framework or vector store is introduced.
+
+Validation for this local documentation/UI slice: the two translated guides
+retain their fenced commands, paths, links and section/step structure. The
+Markdown scan found no remaining Cyrillic, Han or Thai prose in either repository;
+this check is not a ban on multilingual fixtures. Whitespace and secret checks
+passed. The paired UI passed its six test suites and production build/typecheck.
+Desktop staging stopped because its dependency pin is `115c249e660d`, while the
+Vault checkout is `ce7cb821d8c5`; no stale package was used to claim acceptance.
+The installed app and running services were not changed. Source changes are
+prepared for a scoped language-boundary commit; packaging, installation and
+external-browser verification remain separate from source checks.
+
 ## Local Codex memory delivery — 7 November 2026
 
 Implementation and source push were authorized after protocol review. The optional
 consumer adapter in `integrations/codex/` now supplies bounded current context on
 session/prompt events, records readable retrieval receipts, optionally captures
-new main-chat dialogue, and checks visible `Memory:` / `Память:` disclosure before
+new main-chat dialogue, and checks visible memory-disclosure prefixes before
 answers/questions. `scripts/install-codex-memory.mjs` preserves unrelated client
 hooks and previous configuration. It never grants hook trust. Instructions:
 [`codex-memory.md`](codex-memory.md); shared contract:

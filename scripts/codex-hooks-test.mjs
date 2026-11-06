@@ -116,7 +116,7 @@ test('capture is opt-in, idempotent across repeated events and preserves first d
   assert.match(first.path, /^raw\/2026\/11\/2026-11-01-codex-[a-f0-9]{16}\.md$/);
   const retry = await captureEvent(vault, event, enabled, new Date('2026-11-03T00:00:00Z'));
   assert.equal(retry.path, first.path); assert.equal(retry.status, 'already-saved');
-  await captureEvent(vault, stop('Память: прочитан checkpoint.\nSaved the selected branch.'), enabled, now);
+  await captureEvent(vault, stop('Memory: checkpoint read.\nSaved the selected branch.'), enabled, now);
   const saved = await existingCapture(vault, event.session_id);
   assert.equal((saved.content.match(/## user —/g) || []).length, 1);
   assert.equal((saved.content.match(/## assistant —/g) || []).length, 1);
@@ -177,7 +177,7 @@ test('memory disclosure is required once, does not loop, and an accepted final i
   assert.equal(rejected.decision, 'block'); assert.match(rejected.reason, /raw\/cobalt.md/);
   let saved = await existingCapture(createVault({ root }), 'session-fixture');
   assert.doesNotMatch(saved.content, /Answer without disclosure/);
-  const accepted = await runHook(config, stop('Память: raw/cobalt.md — выдержка.\nKeep the approved branch.', { stop_hook_active: true }));
+  const accepted = await runHook(config, stop('Memory: raw/cobalt.md excerpt.\nKeep the approved branch.', { stop_hook_active: true }));
   assert.equal(accepted.decision, undefined);
   saved = await existingCapture(createVault({ root }), 'session-fixture'); assert.match(saved.content, /Keep the approved branch/);
   const retryStillBad = await runHook(config, stop('Still missing.', { stop_hook_active: true }));
@@ -189,11 +189,22 @@ test('no receipt cannot be represented as recovered memory; question tool needs 
   assert.equal(failed.decision, 'block'); assert.match(failed.reason, /No verified retrieval receipt/);
   const denied = await runHook(config, { hook_event_name: 'PreToolUse', session_id: 'session-fixture', turn_id: 'turn-one', tool_name: 'request_user_input_async', tool_input: { questions: [{ title: 'Which branch?' }] } });
   assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny'); assert.match(denied.hookSpecificOutput.permissionDecisionReason, /No verified retrieval receipt/);
-  const allowed = await runHook(config, { hook_event_name: 'PreToolUse', tool_name: 'functions.request_user_input_async', tool_input: { questions: [{ title: 'Память: чтение не подтверждено. Какую ветку выбрать?' }] } });
+  const allowed = await runHook(config, { hook_event_name: 'PreToolUse', tool_name: 'functions.request_user_input_async', tool_input: { questions: [{ title: 'Memory: retrieval unverified. Which branch?' }] } });
   assert.deepEqual(allowed, {});
   const unavailableButHonest = await runHook({ ...config, vaultRoot: path.join(root, 'missing') }, { hook_event_name: 'PreToolUse', tool_name: 'request_user_input', tool_input: { questions: [{ question: 'Memory: unavailable. Where is the moved Vault?' }] } });
   assert.deepEqual(unavailableButHonest, {});
   assert.deepEqual(await runHook(config, { hook_event_name: 'PreToolUse', tool_name: 'unrelated_tool', tool_input: {} }), {});
+}));
+
+test('the MVP disclosure label accepts arbitrary Unicode content without a language profile', () => fixture(async (root, put, config) => {
+  for (const points of [[0x4e2d, 0x6587], [0x627, 0x644, 0x639], [0x914, 0x915], [0x416, 0x44f]]) {
+    const content = String.fromCodePoint(...points);
+    const question = { hook_event_name: 'PreToolUse', tool_name: 'request_user_input', tool_input: { questions: [{ question: `Memory: ${content}.\n${content}?` }] } };
+    assert.deepEqual(await runHook(config, question), {});
+    const result = await runHook(config, stop(`Memory: ${content}.\n${content}`));
+    assert.equal(result.decision, undefined);
+  }
+  assert.equal((await runHook(config, stop('Memory:   '))).decision, 'block');
 }));
 
 test('unsafe paths and symlink capture destinations cannot escape the Vault', () => fixture(async (root, put, config) => {

@@ -70,8 +70,8 @@ decision provenance in the Vault rather than publishing personal conversations.
 
 ## Visible memory disclosure
 
-Every user-facing answer and question begins with one concise `Memory:` line,
-localized to `Память:` in Russian. State what was actually loaded and the relevant
+Every user-facing answer and question begins with a concise visible memory
+disclosure in the language of the reply. State what was actually loaded and the relevant
 short-term state: index locator, source excerpt or original read. Report unavailable
 memory, stale sources and no retrieval honestly. The line must not claim that the
 whole Vault or a whole source was read when only bounded passages were delivered.
@@ -83,6 +83,10 @@ check can request one correction when the disclosure is missing; it cannot prove
 semantic truth or cover every specialized tool/client surface. Supported question
 tools are checked before execution. Other clients receive the same requirement
 through the protocol/MCP instructions and require their own acceptance test.
+The MVP Codex adapter uses the fixed English protocol label `Memory:` followed
+by disclosure text in any language. It checks the label and nonempty content,
+not the language or meaning of the response. This avoids a per-language label
+allowlist; it is not a storage-language restriction or a user language profile.
 
 ## Contract coverage and remaining processor work
 

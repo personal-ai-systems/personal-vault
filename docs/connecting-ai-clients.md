@@ -1,139 +1,146 @@
-# Personal Vault: подключение Codex и обновление приложения
+# Personal Vault: connecting Codex and updating the app
 
-Проверено по исходному коду и документации OpenAI 30 октября 2026 года.
-Инструкция подключения через меню **Connect Codex…** относится к подготовленному
-обновлению приложения. В опубликованной preview.3 этого меню ещё нет. Новый
-установщик не опубликован; на другом Mac подключение пока не проверено.
+Checked against source code and OpenAI documentation on 30 October 2026.
+The instructions for the **Connect Codex…** menu apply to the prepared app
+update. The published preview.3 does not have this menu yet. A new installer
+has not been published, and connection on another Mac has not been verified.
 
-Локально проверены `test:mcp-bridge`, UI-тесты, production build и полный
-`test:desktop` упакованного приложения. Временный MCP-клиент обнаружил инструменты,
-сохранил и прочитал заметку через мост внутри app bundle. Проверены отказ без
-токена, приватность файла подключения, смена адреса/папки и отсутствие fallback.
-Это не проверка живого разговора в Codex/ChatGPT на компьютере другого человека.
+Local checks covered `test:mcp-bridge`, UI tests, the production build and the
+complete `test:desktop` suite for the packaged app. A temporary MCP client
+discovered tools, saved a note and read it through the bridge inside the app
+bundle. Checks covered rejection without a token, connection-file privacy,
+address/folder changes and the absence of fallback. This is not verification
+of a live Codex/ChatGPT conversation on another person's computer.
 
-Основной сценарий этой инструкции — **локальный Codex на том же Mac**.
-Для него не нужны публичный сервер, отдельный веб-плагин или туннель.
-Раздел ChatGPT в вебе оставлен как дополнительный сценарий; для подключения
-Codex его выполнять не нужно.
+The main scenario in this guide is **local Codex on the same Mac**.
+It does not require a public server, a separate web plugin or a tunnel.
+The ChatGPT web section is an additional scenario; it is not required to
+connect Codex.
 
-## Уже установленная preview.3: использовать сейчас, без обновления
+## Already installed preview.3: use it now, without updating
 
-Новое меню Connect Codex удобнее, но ждать его выпуска для диагностики не нужно.
-Локальный Codex может найти и проверить уже запущенный сервер старой версии.
-Передайте ему такую инструкцию:
+The new Connect Codex menu is more convenient, but diagnostics need not wait
+for its release. Local Codex can discover and verify the old version's
+already running server. Give it these instructions:
 
-> Не переустанавливай Personal Vault и не запускай второй сервер. Найди процесс,
-> команда которого указывает на `/Applications/Personal Vault.app/Contents/Resources/vault/node_modules/personal-vault/mcp/personal-vault-server.mjs`.
-> Не читай и не выводи окружение процесса с возможными секретами. Для его PID
-> определи TCP LISTEN-порт через `lsof -nP -a -p PID -iTCP -sTCP:LISTEN`.
-> Не подставляй 8788 по умолчанию. Запроси `/status` именно у найденного
-> loopback-сервера. Проверь `server=personal-vault` и совпадение `root` с папкой,
-> выбранной в приложении. Затем проверь MCP initialize и tools/list на `/mcp`.
-> Если доступ работает, проверь существующую регистрацию Codex и зарегистрируй
-> найденный URL как `personal_vault`, не меняя другие MCP-серверы. Если это имя
-> уже указывает на другой Vault, сообщи конфликт. После регистрации объясни,
-> как начать новую сессию с инструментами. Не утверждай, что текущая сессия уже
-> получила инструменты, если их нет. Если сервер требует недоступную авторизацию,
-> сообщи об этом; не отключай её и не извлекай секреты из процесса.
+> Do not reinstall Personal Vault or start a second server. Find the process
+> whose command points to `/Applications/Personal Vault.app/Contents/Resources/vault/node_modules/personal-vault/mcp/personal-vault-server.mjs`.
+> Do not read or print the process environment, which may contain secrets.
+> For its PID, identify the TCP LISTEN port with
+> `lsof -nP -a -p PID -iTCP -sTCP:LISTEN`.
+> Do not assume port 8788. Request `/status` from that discovered loopback
+> server. Verify `server=personal-vault` and that `root` matches the folder
+> selected in the app. Then check MCP initialize and tools/list on `/mcp`.
+> If access works, inspect the existing Codex registration and register the
+> discovered URL as `personal_vault`, without changing other MCP servers.
+> If that name already points to another Vault, report the conflict.
+> After registration, explain how to start a new session with the tools.
+> Do not claim the current session has received tools that are absent.
+> If the server requires unavailable authorization, report this; do not
+> disable authorization or extract secrets from the process.
 
-Для успешно проверенного и доступного локального сервера команда имеет вид:
+For a successfully verified and accessible local server, the command is:
 
 ```sh
 codex mcp add personal_vault --url http://127.0.0.1:ACTUAL_PORT/mcp
 ```
 
-`PID` и `ACTUAL_PORT` нужно заменить результатами проверки. Это временная
-регистрация адреса старой сборки: при перезапуске приложения порт меняется,
-поэтому его придётся найти и обновить снова. Не открывайте этот порт во внешнюю
-сеть. Проверьте сохранение и чтение по разделу 2 после появления инструментов.
+Replace `PID` and `ACTUAL_PORT` with the verified values. This is a temporary
+registration of the old build's address: the port changes when the app
+restarts, so it must be discovered and updated again. Do not expose this port
+to an external network. Once the tools appear, verify saving and reading
+as described in section 2.
 
-### Альтернатива: установленная файловая библиотека
+### Alternative: the installed file library
 
-Если владелец выбирает локальный доступ через библиотеку, Codex может загрузить
+If the owner chooses local library access, Codex can load
 `/Applications/Personal Vault.app/Contents/Resources/vault/node_modules/personal-vault/lib/index.mjs`,
-проверить экспорт `createVault` и создать экземпляр с подтверждённым `root`.
-Для сохранения заметки используется `captureNote({ title, input })`, для
-проверки — `readText` по возвращённому пути. Путь с пробелами при dynamic import
-преобразуется через `pathToFileURL`. Не изменяйте файлы внутри `.app`.
+verify the `createVault` export and create an instance with the confirmed
+`root`. Save a note with `captureNote({ title, input })`, then verify it with
+`readText` using the returned path. Convert paths containing spaces with
+`pathToFileURL` before dynamic import. Do not modify files inside `.app`.
 
-Это **другой режим, не MCP**. Назовите выбранный режим до записи, используйте
-тот же Vault и библиотечные операции вместо самодельного хранилища или
-произвольных shell-записей. Прямой локальный режим разрешён архитектурой продукта,
-но не является способом обойти отказ MCP в авторизации. В обоих режимах нет
-автоматического сохранения всех разговоров.
+This is **a different mode, not MCP**. Name the selected mode before writing,
+use the same Vault and library operations instead of a custom store or
+arbitrary shell writes. Direct local access is permitted by the product
+architecture, but it is not a way to bypass an MCP authorization denial.
+Neither mode automatically saves all conversations.
 
-## Что означает отчёт после установки
+## What the post-installation report means
 
-| Наблюдение | Что оно доказывает |
+| Observation | What it proves |
 | --- | --- |
-| Приложение открыто, внутри работает MCP-процесс | Локальный runtime запущен. Это ещё не проверка подключения AI. |
-| Выбрана пустая папка | Это допустимое новое хранилище. История чатов сама туда не копируется. |
-| В Codex нет сервера Personal Vault | В этом клиенте интеграция ещё не зарегистрирована. |
-| Ассистент может писать в папку напрямую | У него есть доступ к файловой системе. Это не проверка MCP. |
+| The app is open and its MCP process is running | The local runtime is running. This does not yet verify an AI connection. |
+| An empty folder is selected | This is a valid new store. Chat history is not copied there automatically. |
+| Codex has no Personal Vault server | The integration is not yet registered in this client. |
+| The assistant can write directly to the folder | It has filesystem access. This does not verify MCP. |
 
-Для проверки самого приложения создайте одну несекретную заметку через **New note**,
-сохраните, найдите её поиском и откройте через **Show Vault in Finder**.
-Затем закройте и откройте приложение: заметка должна остаться. Не переустанавливайте
-приложение и не меняйте выбранную папку только потому, что она пустая.
+To test the app itself, create one non-sensitive note with **New note**, save
+it, find it through search and open it with **Show Vault in Finder**.
+Then close and reopen the app: the note should remain. Do not reinstall the
+app or change the selected folder merely because it is empty.
 
-## 0. Как обновлять приложение без удаления
+## 0. Updating the app without deleting it
 
-Удалять старую версию перед обновлением не нужно:
+You do not need to delete the old version before updating:
 
-1. Сохраните открытые заметки и завершите работу Personal Vault через **⌘Q**.
-   Если Codex сейчас использует его подключение, завершите текущую сессию.
-2. Скачайте новый проверенный DMG и откройте его.
-3. Перетащите **Personal Vault.app** в **Applications**. На вопрос Finder
-   выберите **Replace / Заменить**. Не выбирайте Keep Both / Сохранить оба.
-4. Извлеките DMG и запустите **/Applications/Personal Vault.app**, а не копию
-   внутри образа. Проверьте версию через **About Personal Vault**.
-5. Проверьте путь в боковой панели и откройте прежнюю заметку. Затем начните
-   новую сессию Codex и выполните проверку чтения через MCP.
+1. Save open notes and quit Personal Vault with **⌘Q**.
+   If Codex is using its connection, end the current session.
+2. Download the new verified DMG and open it.
+3. Drag **Personal Vault.app** into **Applications**. When Finder asks,
+   choose **Replace**. Do not choose Keep Both.
+4. Eject the DMG and launch **/Applications/Personal Vault.app**, not the copy
+   inside the disk image. Check the version in **About Personal Vault**.
+5. Check the sidebar path and open an existing note. Then start a new Codex
+   session and verify reading through MCP.
 
-Заменяется приложение, а не выбранная папка с заметками. При неизменных имени
-приложения, каталоге настроек и месте установки настройка папки сохраняется,
-а существующая регистрация моста должна остаться пригодной. Если приложение
-снова предлагает выбрать папку, выберите **Open an existing folder** и укажите
-прежний Vault: не создавайте второй. Если Connect Codex появился впервые,
-подключите его по разделу 1. Если приложение перемещено, повторите команду меню.
+This replaces the app, not the selected notes folder. If the app name,
+settings directory and installation location stay the same, the folder
+setting is preserved and the existing bridge registration should remain
+usable. If the app asks you to choose a folder again, select **Open an existing
+folder** and point to the previous Vault; do not create a second one.
+If Connect Codex has appeared for the first time, connect using section 1.
+If the app was moved, run the menu command again.
 
-Не используйте AppCleaner и не удаляйте папку Vault или настройки в Library
-для обычного обновления. Проверьте собственную резервную копию важных заметок.
+Do not use AppCleaner or delete the Vault folder or Library settings for a
+normal update. Verify your own backup of important notes.
 
-**Замена приложения не исправляет блокировку Apple.** Текущая preview имеет
-ad-hoc подпись, но не Developer ID и не нотариализацию Apple. Новая загруженная
-сборка может снова потребовать разрешение в **Privacy & Security** даже после
-одобрения предыдущей. Это ограничение нашей поставки, а не ошибка пользователя.
-Не отключайте Gatekeeper и не снимайте карантин командами Terminal.
+**Replacing the app does not resolve Apple's block.** The current preview
+has an ad-hoc signature, but no Developer ID signature or Apple notarization.
+A newly downloaded build may require permission in **Privacy & Security**
+again, even after the previous build was approved. This is a limitation of
+our distribution, not a user error. Do not disable Gatekeeper or remove
+quarantine using Terminal commands.
 
-Правильное исправление со стороны разработчика: подписывать релизы сертификатом
-**Developer ID Application**, отправлять их на **notarization** и прикреплять
-ticket к поставке. После этого можно добавить проверяемое обновление внутри
-приложения. Сейчас встроенного автообновления нет. Оно не заменяет подпись и
-нотариализацию; установка соответствующей библиотеки сама по себе проблему
-не решит. Точная проверка upgrade на втором Mac ещё предстоит.
+The developer-side fix is to sign releases with a **Developer ID Application**
+certificate, submit them for **notarization** and staple the ticket to the
+distribution. Verified in-app updates can be added afterward. There is no
+built-in automatic updater yet. It does not replace signing and notarization;
+installing an updater library alone does not resolve this problem.
+The exact upgrade path on a second Mac still needs verification.
 
-## 1. Локальный Codex: подключиться к серверу приложения
+## 1. Local Codex: connect to the app's server
 
-Этот путь предназначен для Codex, который запускает инструменты на том же Mac.
-Он не требует публикации Vault в интернете. Codex CLI должен быть установлен
-и доступен в Terminal; наличие приложения ChatGPT само по себе этого не доказывает.
-В текущем опубликованном preview сначала нужно получить обновлённую сборку с
-меню подключения. Не придумывайте порт и не используйте адрес чужого Vault.
+This path is for Codex running tools on the same Mac. It does not require
+publishing Vault on the internet. Codex CLI must be installed and available
+in Terminal; the presence of the ChatGPT app alone does not establish that.
+For the currently published preview, first obtain the updated build with
+the connection menu. Do not invent a port or use someone else's Vault address.
 
-1. Откройте Personal Vault и проверьте выбранную папку в боковой панели.
-2. В верхнем меню macOS выберите **Personal Vault → Connect Codex…**.
-3. Нажмите **Copy command**, вставьте команду в Terminal и выполните её один раз.
-   Она регистрирует сервер `personal_vault` в Codex. Она не переносит историю,
-   не меняет Vault и не устанавливает глобальные инструкции во все чаты.
-4. Выполните `codex mcp list`. В списке должен быть включён `personal_vault`.
-5. Начните новую локальную сессию Codex; при необходимости перезапустите клиент.
-   Проверьте доступность `capture_note`, `vault_files_read`, `vault_files_search`.
-   Вариант настройки вручную: MCP → Add server → STDIO; executable и аргументы
-   возьмите из скопированной команды, а `ELECTRON_RUN_AS_NODE=1` задайте как env.
-6. Оставляйте Personal Vault открытым, когда используете подключение.
+1. Open Personal Vault and check the selected folder in the sidebar.
+2. In the macOS menu bar, select **Personal Vault → Connect Codex…**.
+3. Click **Copy command**, paste the command into Terminal and run it once.
+   It registers the `personal_vault` server in Codex. It does not transfer
+   history, change the Vault or install global instructions in every chat.
+4. Run `codex mcp list`. The list should show `personal_vault` as enabled.
+5. Start a new local Codex session; restart the client if necessary.
+   Check that `capture_note`, `vault_files_read` and `vault_files_search`
+   are available. For manual setup, use MCP → Add server → STDIO; take the
+   executable and arguments from the copied command and set
+   `ELECTRON_RUN_AS_NODE=1` as an environment variable.
+6. Keep Personal Vault open while using the connection.
 
-Скопированная команда имеет такую форму; пути приложение подставляет само:
+The copied command has this form; the app supplies the paths:
 
 ```sh
 codex mcp add personal_vault --env ELECTRON_RUN_AS_NODE=1 -- \
@@ -142,108 +149,119 @@ codex mcp add personal_vault --env ELECTRON_RUN_AS_NODE=1 -- \
   '/path/from/the/app/mcp-connection.json'
 ```
 
-Мост использует Node, уже входящий в приложение. Он передаёт MCP-запросы через
-stdio на HTTP MCP-сервер уже запущенного Personal Vault. Второе хранилище и второй
-Vault-сервер не создаются. Динамический порт и токен читаются из закрытого файла
-подключения в Application Support, отдельно от заметок. Токен не попадает в
-команду или конфигурацию Codex. Файл подключения нельзя отправлять другим людям.
+The bridge uses Node bundled with the app. It forwards MCP requests over
+stdio to the HTTP MCP server of the already running Personal Vault.
+It creates neither a second store nor a second Vault server. The dynamic
+port and token are read from a private connection file in Application
+Support, separate from the notes. The token is not included in the command
+or Codex configuration. Do not send the connection file to other people.
 
-После перезапуска приложения мост перечитывает актуальный адрес. Если Codex
-отключил недоступный сервер, переподключите его или начните новую сессию. После
-переноса приложения повторите команду из меню. Если уже настроен другой сервер
-с именем `personal_vault`, сначала проверьте его; не заменяйте чужое подключение.
+After the app restarts, the bridge rereads the current address. If Codex
+disabled an unavailable server, reconnect it or start a new session.
+After moving the app, run the menu command again. If another server named
+`personal_vault` is already configured, inspect it first; do not replace
+someone else's connection.
 
-## 2. Проверка: запись и чтение именно через MCP
+## 2. Verification: write and read through MCP
 
-Отправьте в новую сессию с подключённым сервером:
+Send this to a new session with the server connected:
 
-> Используй только Personal Vault MCP. Вызови capture_note с заголовком
-> «Проверка подключения» и текстом «MCP-проверка-7429». Затем вызови
-> vault_files_read для пути, который вернул сервер. Покажи путь и прочитанный
-> текст. Не используй Terminal или прямую запись в файловую систему. Если
-> инструмент недоступен, сообщи об этом; не заменяй его другим способом записи.
+> Use only Personal Vault MCP. Call capture_note with the title
+> "Connection check" and the text "MCP-check-7429". Then call vault_files_read
+> for the path returned by the server. Show the path and the text read back.
+> Do not use Terminal or direct filesystem writes. If a tool is unavailable,
+> report this; do not substitute another way of writing.
 
-Проверка пройдена, только если видны реальные вызовы обоих инструментов, их
-ответы, точная строка и тот же файл в Personal Vault. Текст «сохранено» без
-вызова инструмента не является подтверждением. Повторите поиск строки через
+The check passes only when the actual calls to both tools, their responses,
+the exact text and the same file in Personal Vault are visible. Saying
+"saved" without a tool call is not evidence. Repeat the text search with
 `vault_files_search`.
 
-Дополнительно закройте Personal Vault и попросите прочитать тот же файл через
-подключение: клиент должен сообщить о недоступности, а не незаметно перейти к
-файловой системе. Откройте приложение и переподключите клиент. Проверочные записи
-создавайте только в выбранной тестовой папке.
+Also close Personal Vault and ask the client to read the same file through
+the connection: it must report unavailability rather than silently switch
+to the filesystem. Reopen the app and reconnect the client. Create test
+records only in the selected test folder.
 
-## 3. Инструкция для дальнейших разговоров
+## 3. Instructions for future conversations
 
-Это текст для инструкций проекта или нужного чата. Он направляет поведение
-ассистента, но не устанавливает MCP и не ограничивает технически доступ к диску.
+This text can be used in project instructions or the intended chat.
+It guides assistant behaviour, but does not install MCP or technically
+restrict disk access.
 
-> Для чтения и сохранения в моём Personal Vault используй подключение
-> Personal Vault MCP. Для новой заметки вызывай capture_note; для чтения,
-> поиска и изменения существующей заметки — соответствующие vault_files_*
-> инструменты. Используй относительные пути, возвращённые сервером. Не создавай
-> вторую копию Vault и не выбирай другую папку. Если подключение недоступно,
-> сообщи об этом и не переходи к прямой записи на диск без отдельной просьбы.
-> Когда я прошу сохранить результат разговора, сохрани доступные тебе факты,
-> решения, открытые вопросы и следующий шаг, затем прочитай сохранённый файл
-> и покажи его путь. Не называй это полной расшифровкой, если сохранено резюме.
-> Не утверждай, что прочитал другие чаты или автоматически архивируешь все
-> разговоры. Сохраняй только содержание в рамках моего запроса.
+> Use the Personal Vault MCP connection to read and save in my Personal Vault.
+> For a new note, call capture_note; to read, search or change an existing
+> note, use the corresponding vault_files_* tools. Use the relative paths
+> returned by the server. Do not create a second copy of the Vault or select
+> another folder. If the connection is unavailable, report this and do not
+> switch to direct disk writes without a separate request.
+> When I ask you to save a conversation's outcome, save the facts, decisions,
+> open questions and next step available to you, then read the saved file
+> and show its path. Do not call a summary a complete transcript.
+> Do not claim to have read other chats or to automatically archive all
+> conversations. Save only content within my request's scope.
 
-Для сохранения конкретного разговора достаточно команды:
+To save a particular conversation, this instruction is sufficient:
 
-> Сохрани итог этого разговора в Personal Vault через MCP и проверь чтением.
+> Save the outcome of this conversation in Personal Vault through MCP and
+> verify it by reading it back.
 
-## 4. ChatGPT в вебе: отдельная настройка
+## 4. ChatGPT on the web: separate setup
 
-Локальная регистрация Codex не создаёт плагин в ChatGPT. Веб-подключению нужен
-доступный сервер или **Secure MCP Tunnel**. `localhost` в веб-клиенте не указывает
-на ваш Mac. Готовая безопасная настройка туннеля в этой сборке не поставляется.
+Local Codex registration does not create a plugin in ChatGPT.
+A web connection requires a reachable server or **Secure MCP Tunnel**.
+In the web client, `localhost` does not point to your Mac. This build
+does not ship a ready-to-use secure tunnel configuration.
 
-Когда владелец настроит и проверит такой доступ:
+Once the owner has configured and verified that access:
 
-1. Откройте ChatGPT в вебе и раздел **Plugins**.
-2. Выберите **+ → Add custom MCP server**, имя `Personal Vault`.
-3. Укажите проверенный Server URL или подключение Tunnel; настройте поддерживаемую
-   аутентификацию. Возможность добавления зависит от прав аккаунта и workspace.
-4. Создайте и установите плагин. В нужном разговоре выберите его через `@`.
-5. Выполните ту же проверку записи и чтения в отдельной тестовой папке.
+1. Open ChatGPT on the web and go to **Plugins**.
+2. Select **+ → Add custom MCP server** and name it `Personal Vault`.
+3. Enter the verified Server URL or Tunnel connection and configure supported
+   authentication. Availability depends on account and workspace permissions.
+4. Create and install the plugin. Select it with `@` in the intended
+   conversation.
+5. Perform the same write/read check in a separate test folder.
 
-Не открывайте локальный порт в интернет, не пересылайте внутренний токен и не
-используйте **No authentication** для публичного доступа к личным заметкам.
-Проверка Google bearer-токена в текущем сервере не означает, что реализован весь
-OAuth-процесс ChatGPT. Эта инструкция не подтверждает работающее веб-подключение.
+Do not expose the local port to the internet, forward the internal token
+or use **No authentication** for public access to personal notes.
+The current server's Google bearer-token validation does not mean that
+the complete ChatGPT OAuth flow is implemented. This guide does not
+establish a working web connection.
 
-## 5. Что не происходит автоматически
+## 5. What does not happen automatically
 
-MCP выполняет запросы клиента. Он не получает все разговоры аккаунта и не знает,
-когда разговор завершён. В этой поставке нет автоматического архива каждого
-чата. Правило в инструкциях — не фоновая служба и не гарантированный триггер.
+MCP handles client requests. It does not receive every conversation in the
+account or know when a conversation has ended. This distribution has no
+automatic archive of every chat. An instruction is neither a background
+service nor a guaranteed trigger.
 
-Сейчас доступны два отдельных сценария: сохранить выбранный итог через MCP или
-импортировать готовый OpenAI export через **Import OpenAI data**. Импорт истории
-не подключает AI и не включает последующее автоматическое сохранение.
+Two separate scenarios are currently available: save a selected outcome
+through MCP, or import an existing OpenAI export with **Import OpenAI data**.
+Importing history does not connect AI or enable subsequent automatic saving.
 
-## Разработчику: что исправлено и что остаётся
+## For developers: what was fixed and what remains
 
-- Подготовлено меню Connect Codex, стабильный stdio-мост и приватное описание
-  текущего подключения. Настройки Codex меняются только при выполнении команды.
-- Исправлена передача `MCP_SERVICE_TOKENS`: прежний launcher передавал только
-  `PERSONAL_VAULT_TOKEN`, который закреплённый сервер 0.6.1 не проверяет.
-  Прежнюю preview.3 нельзя считать защищённой её per-launch токеном на MCP;
-  сетевой bind остаётся loopback. Не публиковать её MCP через туннель как есть.
-- Остались отдельными работами: публикация новой сборки, проверка на втором Mac,
-  реальное подключение в аккаунте пользователя, безопасный веб-туннель и
-  автоматический экспорт чатов, если он будет отдельно согласован.
-- Для удобных обновлений: сначала Developer ID и нотариализация каждого релиза,
-  затем поддерживаемый update feed и явная установка с сохранением заметок,
-  настроек и подключения Codex. Автообновление в текущем коде не реализовано.
+- The Connect Codex menu, a stable stdio bridge and a private description of
+  the current connection have been prepared. Codex settings change only
+  when the command is run.
+- Forwarding of `MCP_SERVICE_TOKENS` was fixed: the previous launcher passed
+  only `PERSONAL_VAULT_TOKEN`, which the pinned server version 0.6.1 does
+  not validate. The old preview.3 cannot be considered protected by its
+  per-launch token on MCP; the network bind remains loopback. Do not expose
+  its MCP through a tunnel unchanged.
+- Separate work remains: publishing a new build, verification on a second
+  Mac, a real connection in the user's account, a secure web tunnel and
+  automatic chat export if separately agreed.
+- For convenient updates: first Developer ID and notarization for every
+  release, then a maintained update feed and explicit installation that
+  preserves notes, settings and the Codex connection. Automatic updating
+  is not implemented in the current code.
 
-Официальная документация, проверенная 30 октября 2026:
-[настройка MCP в Codex](https://learn.chatgpt.com/docs/extend/mcp),
-[подключение custom MCP в ChatGPT](https://developers.openai.com/api/docs/guides/custom-mcp-server),
+Official documentation checked on 30 October 2026:
+[Codex MCP setup](https://learn.chatgpt.com/docs/extend/mcp),
+[Custom MCP connections in ChatGPT](https://developers.openai.com/api/docs/guides/custom-mcp-server),
 [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/tools-connectors-mcp).
 
-Требования к обновлению macOS:
-[Developer ID и нотариализация Apple](https://developer.apple.com/developer-id/),
-[требование подписи для autoUpdater в Electron](https://www.electronjs.org/docs/latest/api/auto-updater#macos).
+macOS update requirements:
+[Apple Developer ID and notarization](https://developer.apple.com/developer-id/),
+[Electron autoUpdater signing requirement](https://www.electronjs.org/docs/latest/api/auto-updater#macos).
