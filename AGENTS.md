@@ -61,7 +61,7 @@ Rules for this chat:
 3. Personal Vault availability is independent of Moltis. The only shared surface
    is that a client may call the Vault MCP endpoint.
 4. Treat the real Vault (`PERSONAL_VAULT_ROOT`, default `~/personal-vault`) as
-   read-only unless Kirill explicitly asks for a change.
+   read-only unless the user explicitly asks for a change.
 
 ## Local runtime facts
 
@@ -70,7 +70,7 @@ Verify these before repeating them; recorded 2026-09-20.
 - The Vault MCP server runs as a launchd service `com.kirill.personal-vault.mcp`
   (`~/Library/LaunchAgents/com.kirill.personal-vault.mcp.plist`, `KeepAlive=true`).
 - It executes this repository's working tree, bound to `127.0.0.1:8788`, path
-  `/mcp`, with `PERSONAL_VAULT_ROOT=/Users/kirill/personal-vault`.
+  `/mcp`, with `PERSONAL_VAULT_ROOT=$HOME/personal-vault`.
 - Because that service holds port 8788, a second manual start
   (`npm run mcp:vault`) fails with `EADDRINUSE`. Pass a different `MCP_PORT` or
   stop the service first.
