@@ -50,6 +50,22 @@ export interface VaultMoveResult {
   assetsTo?: string;
 }
 
+export interface VaultDeletedEntry extends VaultEntry {
+  /** The original readable Vault-relative path, recovered from the folder convention. */
+  originalPath: string;
+  /** UTC date from .trash/YYYY-MM-DD, not an inferred timestamp. */
+  deletedOn: string;
+  /** This path supports restore; an occupied destination still prevents it. */
+  canRestore: true;
+}
+
+export interface VaultDeletedList {
+  items: VaultDeletedEntry[];
+  /** Legacy or unsafe entries remain untouched; their original path is not guessed. */
+  unsupported: Array<{ path: string; reason: string }>;
+  truncated: boolean;
+}
+
 export interface VaultSearchMatch {
   path: string;
   preview: string;
@@ -88,6 +104,12 @@ export interface Vault {
   archivePath(relative: string): string;
   archive(relative: string): Promise<VaultMoveResult>;
   restore(relative: string): Promise<VaultMoveResult>;
+  /** Moves a file and adjacent .assets into .trash/YYYY-MM-DD/original-path. */
+  trash(relative: string): Promise<VaultMoveResult>;
+  /** Returns at most limit files/unsupported entries; no purge or permanent deletion. */
+  listDeleted(limit?: number): Promise<VaultDeletedList>;
+  /** Restores a full readable .trash/YYYY-MM-DD/original-path without replacing files. */
+  restoreDeleted(relative: string): Promise<VaultMoveResult>;
 
   search(query: string, limit?: number): Promise<VaultSearchMatch[]>;
 

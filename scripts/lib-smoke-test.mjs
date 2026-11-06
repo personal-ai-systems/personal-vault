@@ -52,6 +52,12 @@ try {
     assert.deepEqual(await vault.list('raw/2099/01'), []);
   });
 
+  check('Recently Deleted starts empty only when its folder is absent', async () => {
+    assert.deepEqual(await vault.listDeleted(), { items: [], unsupported: [], truncated: false });
+    const absent = createVault({ root: path.join(root, 'missing-vault-root') });
+    await assert.rejects(() => absent.listDeleted(), (error) => error.code === 'ENOENT');
+  });
+
   check('a new root resolves its existing parent before first save', async () => {
     const fresh = createVault({ root: path.join(tmpdir(), path.basename(root), 'new', 'selected') });
     await fresh.writeText('hello.md', 'first note');
@@ -138,6 +144,119 @@ try {
     assert.equal(await readFile(assertInside(root, 'raw/2026/08/hello.assets/sample.bin'), 'utf8'), 'sample');
   });
 
+  check('trash, listDeleted and restoreDeleted preserve readable paths and attachments', async () => {
+    const source = 'structured/deleted-note.md';
+    const body = '# Deleted note\n\n![sample](deleted-note.assets/sample.bin)\n';
+    await vault.writeText(source, body);
+    await vault.attach(source, 'sample.bin', Buffer.from('recoverable bytes').toString('base64'));
+    const moved = await vault.trash(source);
+    const date = new Date().toISOString().slice(0, 10);
+    assert.equal(moved.to, `.trash/${date}/${source}`);
+    assert.equal(moved.assetsTo, `.trash/${date}/structured/deleted-note.assets`);
+    assert.equal(await vault.exists(source), false);
+    assert.equal((await vault.list('', true, 1000)).some((item) => item.path.startsWith('.trash/')), false);
+    assert.equal((await vault.search('Deleted note')).some((item) => item.path.startsWith('.trash/')), false);
+    const deleted = await vault.listDeleted();
+    const item = deleted.items.find((entry) => entry.path === moved.to);
+    assert.equal(item.originalPath, source);
+    assert.equal(item.deletedOn, date);
+    assert.equal(item.canRestore, true);
+    assert.equal(item.kind, 'file');
+    assert.equal(deleted.items.some((entry) => entry.path.includes('.assets/')), false);
+    assert.equal(deleted.truncated, false);
+    await vault.restoreDeleted(moved.to);
+    assert.equal((await vault.readText(source)).content, body);
+    assert.equal((await vault.readBinary('structured/deleted-note.assets/sample.bin')).content.toString(), 'recoverable bytes');
+    assert.equal((await vault.listDeleted()).items.some((entry) => entry.path === moved.to), false);
+  });
+
+  check('trash refuses same-day collisions without changing either copy or assets', async () => {
+    const source = 'structured/collision.md';
+    await vault.writeText(source, 'first');
+    await vault.attach(source, 'first.bin', Buffer.from('first asset').toString('base64'));
+    const first = await vault.trash(source);
+    await vault.writeText(source, 'second');
+    await vault.attach(source, 'second.bin', Buffer.from('second asset').toString('base64'));
+    await assert.rejects(() => vault.trash(source), /already exists/);
+    assert.equal((await vault.readText(source)).content, 'second');
+    assert.equal((await vault.readText(first.to)).content, 'first');
+    assert.equal((await vault.readBinary('structured/collision.assets/second.bin')).content.toString(), 'second asset');
+    await assert.rejects(() => vault.restoreDeleted(first.to), /already exists/);
+    assert.equal((await vault.readBinary(`${first.to.slice(0, -3)}.assets/first.bin`)).content.toString(), 'first asset');
+  });
+
+  check('trash and restoreDeleted refuse occupied attachment destinations', async () => {
+    await vault.writeText('attachment-collision.md', 'source');
+    await vault.attach('attachment-collision.md', 'a.bin', Buffer.from('asset').toString('base64'));
+    const date = new Date().toISOString().slice(0, 10);
+    await vault.ensureFolder(`.trash/${date}/attachment-collision.assets`);
+    await assert.rejects(() => vault.trash('attachment-collision.md'), /already exists/);
+    assert.equal((await vault.readText('attachment-collision.md')).content, 'source');
+    const moved = await vault.trash('structured/deleted-note.md');
+    await vault.ensureFolder('structured/deleted-note.assets');
+    await assert.rejects(() => vault.restoreDeleted(moved.to), /already exists/);
+    assert.equal(await vault.exists(moved.to), true);
+    await vault.writeText('bare-note.md', 'no source assets');
+    const bare = await vault.trash('bare-note.md');
+    await vault.ensureFolder('bare-note.assets');
+    await assert.rejects(() => vault.restoreDeleted(bare.to), /already exists/);
+    assert.equal(await vault.exists(bare.to), true);
+  });
+
+  check('listDeleted reports legacy paths and orphan assets honestly and enforces bounds', async () => {
+    await vault.writeText('.trash/legacy.md', 'original folder is unknown');
+    await vault.writeText('.trash/2020-01-01/known/original.md', 'known original path');
+    await vault.ensureFolder('.trash/2020-01-01/known/orphan.assets');
+    const result = await vault.listDeleted();
+    assert.equal(result.items.find((item) => item.path === '.trash/2020-01-01/known/original.md').originalPath, 'known/original.md');
+    assert.equal(result.unsupported.some((item) => item.path === '.trash/legacy.md' && /unknown/.test(item.reason)), true);
+    assert.equal(result.unsupported.some((item) => item.path.endsWith('/orphan.assets')), true);
+    assert.equal((await vault.readText('.trash/legacy.md')).content, 'original folder is unknown');
+    await assert.rejects(() => vault.restoreDeleted('.trash/legacy.md'), /original path/);
+    const bounded = await vault.listDeleted(1);
+    assert.equal(bounded.items.length + bounded.unsupported.length, 1);
+    assert.equal(bounded.truncated, true);
+    for (const limit of [0, -1, 1.5, 1001, NaN]) await assert.rejects(() => vault.listDeleted(limit), /limit/);
+  });
+
+  check('Recently Deleted rejects unsafe paths and never follows symlinks', async () => {
+    for (const unsafe of ['', '.', '../outside.md', '/outside.md', '.trash/legacy.md', 'structured']) {
+      await assert.rejects(() => vault.trash(unsafe), /Vault root|inside the Vault|not a folder/);
+    }
+    for (const unsafe of ['../outside.md', '/outside.md', '.trash/2020-02-30/no.md', '.trash/2020-01-01/.trash/nested.md']) {
+      await assert.rejects(() => vault.restoreDeleted(unsafe), /inside the Vault|original path|outside Recently Deleted/);
+    }
+    await symlink(other, assertInside(root, '.trash/2020-01-01/linked'));
+    const result = await vault.listDeleted();
+    assert.equal(result.unsupported.some((entry) => entry.path === '.trash/2020-01-01/linked' && /Symbolic links/.test(entry.reason)), true);
+    await assert.rejects(() => vault.restoreDeleted('.trash/2020-01-01/linked/outside.md'), /Symbolic links/);
+    await symlink(other, assertInside(root, 'unsafe-assets.assets'));
+    await vault.writeText('unsafe-assets.md', 'safe source');
+    await assert.rejects(() => vault.trash('unsafe-assets.md'), /Symbolic links/);
+    assert.equal((await vault.readText('unsafe-assets.md')).content, 'safe source');
+    await vault.writeText('replacement/location.md', 'deleted before replacement');
+    const moved = await vault.trash('replacement/location.md');
+    await symlink(other, assertInside(root, 'replacement/location.md'));
+    assert.equal((await vault.listDeleted()).items.some((entry) => entry.path === moved.to && entry.originalPath === 'replacement/location.md'), true);
+    await assert.rejects(() => vault.restoreDeleted(moved.to), /Symbolic links/);
+    assert.equal((await vault.readText(moved.to)).content, 'deleted before replacement');
+  });
+
+  check('concurrent restores cannot replace the same original destination', async () => {
+    const first = '.trash/2000-01-01/concurrent.md';
+    const second = '.trash/2000-01-02/concurrent.md';
+    await vault.writeText(first, 'first candidate');
+    await vault.writeText(second, 'second candidate');
+    const another = createVault({ root });
+    const results = await Promise.allSettled([vault.restoreDeleted(first), another.restoreDeleted(second)]);
+    assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+    assert.equal(results.filter((result) => result.status === 'rejected').length, 1);
+    const winner = results[0].status === 'fulfilled' ? 'first candidate' : 'second candidate';
+    const remaining = results[0].status === 'fulfilled' ? second : first;
+    assert.equal((await vault.readText('concurrent.md')).content, winner);
+    assert.equal(await vault.exists(remaining), true);
+  });
+
   check('captureNote writes readable Markdown in raw/YYYY/MM', async () => {
     const saved = await vault.captureNote({ input: 'A captured thought.', title: 'Lib Smoke Capture' });
     assert.match(saved.capturePath, /^raw\/\d{4}\/\d{2}\/\d{4}-\d{2}-\d{2}-lib-smoke-capture\.md$/);
@@ -160,6 +279,50 @@ try {
     assert.equal(content.includes('shot.png'), true);
     assert.equal(content.includes('A caption'), true);
     assert.equal(await readFile(assertInside(root, `raw/${saved.capturePath.split('/')[1]}/${saved.capturePath.split('/')[2]}/${saved.capturePath.slice(0, -3).split('/').pop()}.assets/shot.png`), 'utf8'), 'png-bytes');
+  });
+
+  check('a non-Latin title keeps its meaning in the filename', async () => {
+    const saved = await vault.captureNote({ input: 'Мысли о проекте.', title: 'Идеи 📝' });
+    assert.match(saved.capturePath, /^raw\/\d{4}\/\d{2}\/\d{4}-\d{2}-\d{2}-идеи\.md$/,
+      'a Cyrillic title must stay readable instead of collapsing to "capture"');
+    const content = await readFile(assertInside(root, saved.capturePath), 'utf8');
+    assert.equal(content.includes('title: "Идеи 📝"'), true, 'the title itself must survive verbatim');
+    assert.equal(content.includes('Мысли о проекте.'), true);
+  });
+
+  check('another script keeps its own characters and repeats still suffix', async () => {
+    const greek = await vault.captureNote({ input: 'Σημείωση.', title: 'Σημειώσεις' });
+    assert.match(greek.capturePath, /-σημειώσεις\.md$/, 'Greek titles are not transliterated to ASCII either');
+    const cyrillicAgain = await vault.captureNote({ input: 'Второй раз.', title: 'Идеи 📝' });
+    assert.match(cyrillicAgain.capturePath, /-идеи-2\.md$/, 'a repeated readable title must suffix rather than overwrite');
+  });
+
+  check('unsafe characters cannot escape the capture folder', async () => {
+    const saved = await vault.captureNote({ input: 'Traversal attempt.', title: '../../etc/pa:ss|wo*rd' });
+    assert.match(saved.capturePath, /^raw\/\d{4}\/\d{2}\/\d{4}-\d{2}-\d{2}-etc-pa-ss-wo-rd\.md$/,
+      'separators and reserved punctuation collapse to one separator');
+    assert.equal(saved.capturePath.split('/').length, 4, 'the note stays two folders deep inside raw/');
+  });
+
+  check('a punctuation-only title still falls back to a stable name', async () => {
+    const saved = await vault.captureNote({ input: 'No words in the title.', title: '!!! ??? 📝' });
+    assert.match(saved.capturePath, /-capture\.md$/, 'a title with no letters or digits keeps the documented fallback');
+  });
+
+  check('a listing failure is reported instead of inventing a free path', async () => {
+    if (process.platform === 'win32') return;
+    const saved = await vault.captureNote({ input: 'Placeholder.', title: 'Lib Smoke Listing Failure' });
+    const folder = path.posix.dirname(saved.capturePath);
+    const folderPath = assertInside(root, folder);
+    await chmod(folderPath, 0o000);
+    try {
+      await assert.rejects(() => vault.captureNote({ input: 'Blocked.', title: 'Lib Smoke Listing Failure' }),
+        (error) => error.code === 'EACCES' || error.code === 'EPERM',
+        'a real listing failure must not be swallowed into an empty list');
+    } finally {
+      await chmod(folderPath, 0o755);
+    }
+    assert.equal((await vault.list(folder, false, 100)).length > 0, true, 'the folder is readable again after the check');
   });
 
   check('captureAsset appends to an existing capture', async () => {

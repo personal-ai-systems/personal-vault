@@ -38,7 +38,7 @@ import { createVault } from '../lib/index.mjs';
 
 const vault = createVault({ root: process.env.PERSONAL_VAULT_ROOT || path.join(process.env.HOME || '', 'personal-vault') });
 const VAULT_ROOT = vault.root;
-const { list, readText, writeText, archive, restore, search, attach, captureNote, captureAsset, today } = vault;
+const { list, readText, writeText, archive, restore, trash, listDeleted, restoreDeleted, search, attach, captureNote, captureAsset, today } = vault;
 
 const HOST = process.env.MCP_HOST || '127.0.0.1';
 const PORT = Number(process.env.MCP_PORT || process.env.PORT || 8788);
@@ -196,6 +196,23 @@ function createVaultServer(context) {
   server.registerTool(fileToolName('restore'), { title: 'Restore an archived file', inputSchema: { path: z.string().min(1) } }, async ({ path: target }, extra) => {
     if (!(await allowed(extra))) return authError(extra);
     try { return { content: [{ type: 'text', text: `Restored ${target}.` }], structuredContent: await restore(target) }; }
+    catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
+  });
+  server.registerTool(fileToolName('trash'), { title: 'Move a file to Recently Deleted', description: 'Recoverably moves a file and its adjacent .assets folder to .trash/YYYY-MM-DD/original-path. No automatic purge or permanent deletion.', inputSchema: { path: z.string().min(1) } }, async ({ path: target }, extra) => {
+    if (!(await allowed(extra))) return authError(extra);
+    try { return { content: [{ type: 'text', text: `Moved ${target} to Recently Deleted.` }], structuredContent: await trash(target) }; }
+    catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
+  });
+  server.registerTool(fileToolName('list_deleted'), { title: 'List Recently Deleted files', description: 'Lists recoverable readable paths and unsupported legacy entries without inferring lost original locations.', inputSchema: { limit: z.number().int().min(1).max(1000).optional() } }, async ({ limit = 200 }, extra) => {
+    if (!(await allowed(extra))) return authError(extra);
+    try {
+      const result = await listDeleted(limit);
+      return { content: [{ type: 'text', text: `Found ${result.items.length} recoverable file(s) and ${result.unsupported.length} unsupported entry/entries.${result.truncated ? ' Results are truncated; use a larger limit or inspect the Vault folder.' : ''}` }], structuredContent: result };
+    } catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
+  });
+  server.registerTool(fileToolName('restore_deleted'), { title: 'Restore a Recently Deleted file', description: 'Restores a path from .trash/YYYY-MM-DD/original-path, refusing occupied original or attachment paths.', inputSchema: { path: z.string().min(1) } }, async ({ path: target }, extra) => {
+    if (!(await allowed(extra))) return authError(extra);
+    try { return { content: [{ type: 'text', text: `Restored ${target} from Recently Deleted.` }], structuredContent: await restoreDeleted(target) }; }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
   });
   server.registerTool(fileToolName('search'), { title: 'Search text files', inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(100).optional() } }, async ({ query, limit = 20 }, extra) => {
