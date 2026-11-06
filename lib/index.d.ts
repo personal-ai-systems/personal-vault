@@ -71,6 +71,48 @@ export interface VaultSearchMatch {
   preview: string;
 }
 
+export interface VaultContextQuery {
+  query?: string;
+  /** Relevance hints, never access restrictions. */
+  contexts?: string[];
+  limit?: number;
+  maxChars?: number;
+  cursor?: string;
+}
+
+export interface VaultContextPassage {
+  path: string;
+  contentSha256: string;
+  sourceDate: string | null;
+  modifiedAt: string;
+  lifecycle: string;
+  contentMode: string;
+  title: string;
+  contexts: string[];
+  locator: { startLine: number | null; endLine: number | null; heading: string; role: string | null };
+  excerpt: string;
+  excerptKind: 'extractive';
+  excerptTruncated: boolean;
+  summaries: Array<{ summary: string | null; contexts: string[]; provenance: unknown; reviewState: string; status: string; currentFor: unknown; supersedes: unknown; submittedEvidence: unknown }>;
+  freshness: string;
+  score: number;
+}
+
+export interface VaultContextResult {
+  status: string;
+  results: VaultContextPassage[];
+  indexRevision?: string;
+  builtAt?: string;
+  annotationsFreshness?: string;
+  coverageComplete?: boolean;
+  passageCoverageComplete?: boolean;
+  charactersReturned?: number;
+  truncated?: boolean;
+  nextCursor?: string | null;
+  warnings?: Array<{ path: string; reason: string }>;
+  fallback: string;
+}
+
 export interface CreateVaultOptions {
   /** Absolute path to the Vault folder. Required. */
   root: string;
@@ -112,6 +154,10 @@ export interface Vault {
   restoreDeleted(relative: string): Promise<VaultMoveResult>;
 
   search(query: string, limit?: number): Promise<VaultSearchMatch[]>;
+  /** Rebuilds only readable derived lookup files; never rewrites source memory. */
+  refreshContextIndex(options?: { sourceRoots?: string[]; metadataOnly?: string[]; verifyAfterMs?: number; maxTextBytes?: number; maxPassagesPerFile?: number; excerptChars?: number }): Promise<Record<string, unknown>>;
+  getContext(options?: VaultContextQuery): Promise<VaultContextResult>;
+  contextIndexStatus(): Promise<Record<string, unknown>>;
 
   attach(markdownPath: string, name: string, dataBase64: string): Promise<VaultAttachment>;
 

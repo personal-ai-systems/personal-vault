@@ -54,6 +54,13 @@ that ignores server instructions can still read the file, but that behavior must
 be configured and verified. A cloud client cannot reach the Mac's localhost just
 because it has this Markdown; use an already authorized reachable endpoint.
 
+The optional [local Codex lifecycle adapter](codex-memory.md) adds automatic
+bounded retrieval and visible memory disclosure in supported trusted sessions.
+It uses the shared library locally; remote consumers use the MCP contract.
+Before each answer/question, report the actual loaded source/index and whether
+it was an excerpt, original, unavailable or not read. Instructions and fixtures
+alone do not establish actual host execution or account-wide activation.
+
 ## Management boundary
 
 The operating agreement is edited in the owner-selected Markdown. Files remain

@@ -9,6 +9,11 @@ Its independent desktop client browses and edits the same files; interpretation,
 planning and agent workflows belong to consuming applications. See the
 [product boundary](docs/product-boundary.md).
 
+For shared context across supported local Codex chats, see
+[automatic memory recovery and visible source disclosure](docs/codex-memory.md).
+This is an optional source-installed client adapter; it is not included in the
+downloadable desktop preview or automatically enabled in every ChatGPT chat.
+
 [**Download preview.3 for Mac — Apple Silicon (.dmg)**](https://github.com/personal-ai-systems/personal-vault-ui/releases/download/v0.2.1-preview.3/Personal.Vault-0.2.1-preview.3-arm64.dmg)
 
 [View release notes or download the ZIP](https://github.com/personal-ai-systems/personal-vault-ui/releases/tag/v0.2.1-preview.3) · [First-time testing guide](https://github.com/personal-ai-systems/personal-vault-ui/blob/v0.2.1-preview.3/docs/testing-preview.md) · [Report a problem](https://github.com/personal-ai-systems/personal-vault-ui/issues)
@@ -280,7 +285,7 @@ It writes ordinary Markdown under `raw/YYYY/MM/`; it does not create a database 
 - save attachments beside Markdown notes;
 - archive and restore files.
 
-See the [API overview](docs/personal-vault-api.md), [desktop integration notes](docs/desktop-integration.md) and [provider-neutral context guide](docs/provider-neutral-context.md).
+See the [API overview](docs/personal-vault-api.md), [desktop integration notes](docs/desktop-integration.md), [provider-neutral context guide](docs/provider-neutral-context.md) and [readable context index](docs/context-index.md).
 
 ### Verify a change
 

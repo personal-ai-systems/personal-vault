@@ -8,6 +8,76 @@ Assistant. Older mixed-product plans cannot expand its responsibilities.
 
 Personal Vault is a local-first, human-readable folder. The files are the product.
 
+## Local Codex memory delivery — 7 November 2026
+
+Implementation and source push were authorized after protocol review. The optional
+consumer adapter in `integrations/codex/` now supplies bounded current context on
+session/prompt events, records readable retrieval receipts, optionally captures
+new main-chat dialogue, and checks visible `Memory:` / `Память:` disclosure before
+answers/questions. `scripts/install-codex-memory.mjs` preserves unrelated client
+hooks and previous configuration. It never grants hook trust. Instructions:
+[`codex-memory.md`](codex-memory.md); shared contract:
+[`agent-memory-protocol.md`](agent-memory-protocol.md).
+
+The MCP context tool now advertises an output schema and read-only annotations;
+malformed authored annotation fields are reported without poisoning the whole
+response. Startup guidance includes index-first retrieval and actual-read
+disclosure. Repository instructions carry the same disclosure requirement.
+
+Validation: `npm test` passed (46 file-library checks, MCP/import fixtures,
+18 context-index cases, worker lifecycle, installer checks and 15 Codex-adapter
+cases); `npm run test:context` passed 12 cases. Secret scan, whitespace check and
+package dry run passed. There is no separate engine compilation step. Tests use
+temporary Vaults. Source fixtures are not a desktop-model acceptance test.
+
+Runtime verification: the owner-configured local server was reloaded and an SDK
+client saw 19 tools including `vault_context_get`, retrieved a current context
+response and read exact owner-selected `vault://context` bytes. The installed
+Codex discovered four configured hooks without errors but marked them untrusted.
+Normal Settings → Hooks review remains required; no trust bypass was used.
+Computer Use was unable to control Codex, so real new-desktop-chat/compaction
+execution is not claimed. ChatGPT web/mobile and packaged UI remain separate.
+
+Relocation audit: the company workspace contains independent repositories, not
+an umbrella Git checkout. Assistant's local dependency and test path resolution
+were migrated to the moved Vault. Desktop UI still uses bundled MCP; local
+Assistant uses the library. Existing compatibility aliases are retained. The
+context-index service now uses the canonical checkout. Personal source records,
+client configurations and audit receipts stay outside published repositories.
+
+Next: normal hook review, then real fresh-chat/resume/compaction acceptance. Check
+the current source/read receipt before claiming memory was used. The disclosure
+check validates presence, not semantic truth. Capture starts at activation and
+does not claim import of old history, tool traces or subagent chats. The existing
+semantic review schedule is configured separately; a later successful independent
+run must be observed before claiming continuous semantic maintenance.
+
+## Context indexing continuation — 6 November 2026
+
+Implemented in source: a rebuildable readable source/passage index, authored
+context annotations, incremental refresh/watch CLI and the shared `getContext`
+contract exposed as `vault_context_get`. Contexts boost relevance, never act as
+project access lists. Original files, broad search and full-source reading stay
+available. Semantic summaries belong to the consuming Assistant/model.
+
+Changed files: `lib/context-index.mjs`, `lib/index.mjs`, `lib/index.d.ts`,
+`mcp/personal-vault-server.mjs`, `scripts/context-index.mjs`,
+`scripts/context-index-test.mjs`, `scripts/context-index-worker-test.mjs`,
+`scripts/mcp-smoke-test.mjs`, `package.json`, `README.md`, this handoff and
+`docs/context-index.md`.
+
+Verification: `npm test` passed, including 46 file-library checks, MCP/local
+retrieval parity, importer fixtures, 17 context-index cases and the watch-worker
+fixture. `npm run test:context` passed all 12 provider-neutral context cases.
+Secret scan and package dry run passed; there is no separate engine build.
+All automated test data is temporary. Review fixed pagination candidate loss
+and cached annotation freshness; regression cases cover both.
+
+Source tests do not update an installed desktop package or an existing MCP
+client. Host-specific worker configuration, personal curation, backup and browser
+verification belong in the private Vault checkpoint, not this public handoff.
+No new release, commit or push is claimed by this checkpoint.
+
 A person must be able to open the Vault in Finder, Windows File Explorer,
 Obsidian or any Markdown editor; understand the folders; read and move notes;
 and restore a backup without a special application or account.

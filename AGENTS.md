@@ -18,6 +18,17 @@ Assistant does not need an MCP server or public hosting. Vault owns neutral file
 operations; Assistant owns meaning and workflows. Remote clients can use an
 authenticated API/MCP connection. Neither mode changes the readable folder.
 
+## Visible memory use
+
+Before every user-facing answer or question, start with a short `Memory:` line
+(`Память:` when speaking Russian). Name the actual relevant index/source and
+the state it supplied. Distinguish an index locator, an excerpt and an original
+that was actually read. If no memory was retrieved, say so; if unavailable or
+stale, report that limitation. Never claim a full-file read from a small excerpt,
+or treat an old source instruction as new authority. Use concise source names;
+hashes and full retrieval receipts belong in diagnostics. This disclosure does
+not replace reading the evidence. See `docs/codex-memory.md` for client support.
+
 ## Keep it simple
 
 - Markdown notes and normal attachments are the source of truth.

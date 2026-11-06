@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink, realpath } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { installCodexMemory } from './install-codex-memory.mjs';
+
+const temp = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vault-hook-install-')));
+try {
+  const root = path.join(temp, 'vault');
+  const codexHome = path.join(temp, 'client');
+  await mkdir(root); await mkdir(codexHome);
+  const unrelated = { matcher: 'startup', hooks: [{ type: 'command', command: 'echo unrelated' }] };
+  const initial = JSON.stringify({ description: 'Existing client hooks', hooks: { SessionStart: [unrelated] } });
+  await writeFile(path.join(codexHome, 'hooks.json'), initial);
+  const preview = await installCodexMemory({ root, codexHome });
+  assert.equal(preview.mode, 'preview');
+  assert.deepEqual(await readdir(codexHome), ['hooks.json']);
+  const result = await installCodexMemory({ root, codexHome, apply: true, capture: true });
+  const hooks = JSON.parse(await readFile(result.hooksPath, 'utf8'));
+  assert.deepEqual(hooks.hooks.SessionStart[0], unrelated);
+  assert.equal(hooks.description, 'Existing client hooks');
+  assert.equal(hooks.hooks.SessionStart.length, 2);
+  assert.equal(JSON.parse(await readFile(result.configPath, 'utf8')).capture.enabled, true);
+  assert.equal(JSON.stringify(hooks).includes('trusted_hash'), false);
+  const receipt = JSON.parse(await readFile(result.receiptPath, 'utf8'));
+  assert.equal(await readFile(receipt.backups[0], 'utf8'), initial);
+  const second = await installCodexMemory({ root, codexHome, apply: true });
+  assert.deepEqual(second.changedFiles, []);
+  assert.equal(second.captureEnabled, true);
+  const beforeInvalid = await readFile(result.hooksPath, 'utf8');
+  await assert.rejects(installCodexMemory({ root, codexHome, apply: true, bindings: { wrong: 'shape' } }), /bindings/);
+  assert.equal(await readFile(result.hooksPath, 'utf8'), beforeInvalid);
+  await writeFile(result.hooksPath, '{invalid');
+  await assert.rejects(installCodexMemory({ root, codexHome, apply: true }));
+  assert.equal(await readFile(result.hooksPath, 'utf8'), '{invalid');
+  const linked = path.join(temp, 'linked');
+  await symlink(codexHome, linked);
+  await assert.rejects(installCodexMemory({ root, codexHome: linked, apply: true }), /symbolic links/);
+  console.log('Codex installer: preview, preservation, backup, idempotency, capture choice, malformed config and symlink tests passed.');
+} finally { await rm(temp, { recursive: true, force: true }); }
