@@ -30,13 +30,21 @@ cases); `npm run test:context` passed 12 cases. Secret scan, whitespace check an
 package dry run passed. There is no separate engine compilation step. Tests use
 temporary Vaults. Source fixtures are not a desktop-model acceptance test.
 
+The first GitHub run passed macOS/Linux but exposed Windows force-termination
+semantics in the worker shutdown fixture. The follow-up supports graceful IPC
+disconnect, retains POSIX signal coverage, and makes symlink/ownership fixtures
+portable without relaxing containment or unknown-owner lock handling. The full
+local suite passed again; inspect the follow-up CI result for Windows acceptance.
+
 Runtime verification: the owner-configured local server was reloaded and an SDK
 client saw 19 tools including `vault_context_get`, retrieved a current context
-response and read exact owner-selected `vault://context` bytes. The installed
-Codex discovered four configured hooks without errors but marked them untrusted.
-Normal Settings → Hooks review remains required; no trust bypass was used.
-Computer Use was unable to control Codex, so real new-desktop-chat/compaction
-execution is not claimed. ChatGPT web/mobile and packaged UI remain separate.
+response and read exact owner-selected `vault://context` bytes. Initial Codex
+discovery marked four hooks untrusted. A later read-only discovery reported all
+four trusted and enabled, without errors; the installer does not grant trust.
+An actual compaction event then loaded a bound checkpoint excerpt, and prompt
+retrieval was observed in another existing session. This is host execution
+evidence, not a fresh-chat or universal-client acceptance result. ChatGPT
+web/mobile and packaged UI remain separate.
 
 Relocation audit: the company workspace contains independent repositories, not
 an umbrella Git checkout. Assistant's local dependency and test path resolution
@@ -45,7 +53,7 @@ Assistant uses the library. Existing compatibility aliases are retained. The
 context-index service now uses the canonical checkout. Personal source records,
 client configurations and audit receipts stay outside published repositories.
 
-Next: normal hook review, then real fresh-chat/resume/compaction acceptance. Check
+Next: real fresh-chat/resume acceptance and answer-quality evaluation. Check
 the current source/read receipt before claiming memory was used. The disclosure
 check validates presence, not semantic truth. Capture starts at activation and
 does not claim import of old history, tool traces or subagent chats. The existing

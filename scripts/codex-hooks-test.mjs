@@ -140,10 +140,17 @@ test('same-session concurrent writes preserve both messages and an external appe
   assert.match(saved.content, /Owner added a correction outside the hook/); assert.match(saved.content, /Next turn source/);
 }));
 
-test('dead same-user lock is reclaimed but a live owner is preserved', () => fixture(async (root, put, config) => {
+test('dead lock recovery requires verifiable ownership and a live owner is preserved', () => fixture(async (root, put, config) => {
   const vault = createVault({ root }); const enabled = validateConfig({ ...config, capture: { enabled: true } });
   const lock = `indexes/codex/locks/${digest('session-fixture').slice(0, 24)}.lock`;
   await put(`${lock}/owner.json`, JSON.stringify({ pid: 2147483647, uid: process.getuid?.() }));
+  if (!process.getuid) {
+    // Windows exposes no POSIX uid; the adapter deliberately cannot prove
+    // ownership of an abandoned lock and must leave it for explicit recovery.
+    await assert.rejects(captureEvent(vault, prompt('Do not reclaim an unverified owner.'), enabled), /busy/);
+    assert.equal(JSON.parse(await readFile(path.join(root, lock, 'owner.json'), 'utf8')).pid, 2147483647);
+    await rm(path.join(root, lock), { recursive: true }); // This fixture owns it.
+  }
   const results = await Promise.all([captureEvent(vault, prompt('First after stale lock.'), enabled), captureEvent(vault, prompt('Second after stale lock.', { turn_id: 'two' }), enabled)]);
   assert.equal(results.length, 2);
   const saved = await existingCapture(vault, 'session-fixture'); assert.match(saved.content, /First after stale lock/); assert.match(saved.content, /Second after stale lock/);
@@ -195,7 +202,7 @@ test('unsafe paths and symlink capture destinations cannot escape the Vault', ()
   assert.throws(() => validateConfig({ ...config, bindings: [{ cwd: '/work', checkpoint: '/outside.md' }] }), /Vault-relative/);
   const outside = await mkdtemp(path.join(tmpdir(), 'vault-hook-outside-'));
   try {
-    await mkdir(path.join(root, 'indexes'), { recursive: true }); await symlink(outside, path.join(root, 'indexes/codex'));
+    await mkdir(path.join(root, 'indexes'), { recursive: true }); await symlink(outside, path.join(root, 'indexes/codex'), 'junction');
     const output = await runHook({ ...config, capture: { enabled: true } }, prompt('Must not escape.'));
     assert.match(output.systemMessage, /Symbolic links/);
     assert.deepEqual(await readdir(outside), []);

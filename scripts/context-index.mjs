@@ -67,6 +67,7 @@ else if (operation === 'watch') {
   }
   const periodic = setInterval(() => schedule('periodic-reconciliation'), intervalMs);
   async function stop() {
+    if (stopping) return;
     stopping = true;
     clearTimeout(timer);
     clearInterval(periodic);
@@ -75,5 +76,9 @@ else if (operation === 'watch') {
   }
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
+  // A hosting Node client can close its IPC channel to request graceful
+  // shutdown on every platform. Windows child.kill() forcibly terminates the
+  // process even for SIGTERM, so it cannot run the cleanup above.
+  if (process.connected) process.once('disconnect', stop);
   await refresh('startup');
 } else throw new Error('Choose refresh, query, status or watch.');

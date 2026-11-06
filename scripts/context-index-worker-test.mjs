@@ -20,6 +20,7 @@ let stderr = '';
 let buffer = '';
 let child;
 let exited = false;
+let exit;
 
 function dispatch() {
   for (const waiter of waiting) {
@@ -78,12 +79,12 @@ try {
   const initial = '# Worker fixture\n\nThe approved outcome is initial-worker-marker.\n';
   await writeFile(path.join(root, 'raw/example.md'), initial);
   child = spawn(process.execPath, [cli, 'watch', '--root', root, '--interval-ms', '1000', '--debounce-ms', '25'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: { ...process.env, PERSONAL_VAULT_ROOT: root },
   });
-  const exit = new Promise((resolve) => {
+  exit = new Promise((resolve) => {
     child.once('error', (error) => { stderr += error.message; });
-    child.once('close', (code, signal) => {
+    child.once('exit', (code, signal) => {
       exited = true;
       for (const waiter of waiting) {
         clearTimeout(waiter.timer);
@@ -144,17 +145,43 @@ try {
   assert.equal((await stat(indexFile)).mtimeMs, mtimeBefore, 'idle reconciliation does not rewrite the index');
   assert.equal(events.filter((event) => event.event === 'context-index-error').length, 0);
 
-  child.kill('SIGTERM');
+  // Closing the hosting client's IPC channel is graceful on Windows too;
+  // child.kill('SIGTERM') there is an unconditional process termination.
+  child.disconnect();
   let killTimer;
   const stopped = await Promise.race([
     exit,
     new Promise((_, reject) => { killTimer = setTimeout(() => reject(new Error('Worker did not stop cleanly.')), 5000); }),
   ]).finally(() => clearTimeout(killTimer));
   assert.equal(stopped.code, 0, 'worker handles shutdown cleanly');
+  assert.equal(stopped.signal, null, 'portable shutdown did not forcibly kill the worker');
+  await assert.rejects(stat(path.join(root, 'indexes/context-index/refresh.lock')), { code: 'ENOENT' }, 'refresh lock is released before shutdown');
   assert.equal(recovered.row.contentSha256, digest(late));
-  console.log('Context index worker: startup, external edit, missing-root recovery, idle reuse and shutdown passed.');
+  if (process.platform !== 'win32') {
+    // Retain coverage for the service manager's POSIX shutdown path as well.
+    const signalled = spawn(process.execPath, [cli, 'watch', '--root', root], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const signalExit = new Promise((resolve, reject) => { signalled.once('error', reject); signalled.once('close', (code, signal) => resolve({ code, signal })); });
+    let signalTimer;
+    try {
+      const ready = new Promise((resolve, reject) => {
+        let output = '';
+        signalled.stdout.on('data', (chunk) => {
+          output += String(chunk);
+          if (output.includes('"reason":"startup"')) resolve();
+        });
+        signalExit.then(() => reject(new Error('Signal fixture exited before startup.')), reject);
+      });
+      await Promise.race([ready, new Promise((_, reject) => { signalTimer = setTimeout(() => reject(new Error('Signal fixture startup timed out.')), 15000); })]).finally(() => clearTimeout(signalTimer));
+      signalled.kill('SIGTERM');
+      const result = await Promise.race([signalExit, new Promise((_, reject) => { signalTimer = setTimeout(() => reject(new Error('POSIX shutdown timed out.')), 5000); })]).finally(() => clearTimeout(signalTimer));
+      assert.deepEqual(result, { code: 0, signal: null }, 'POSIX signal still permits graceful cleanup');
+    } finally {
+      if (signalled.exitCode === null && signalled.signalCode === null) { signalled.kill('SIGKILL'); await signalExit; }
+    }
+  }
+  console.log('Context index worker: startup, external edit, missing-root recovery, idle reuse, portable IPC shutdown and supported POSIX signal shutdown passed.');
 } finally {
-  if (child && !exited) child.kill('SIGKILL');
+  if (child && !exited) { child.kill('SIGKILL'); await exit; }
   for (const waiter of waiting) clearTimeout(waiter.timer);
   await rm(root, { recursive: true, force: true });
 }

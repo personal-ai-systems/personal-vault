@@ -34,7 +34,7 @@ try {
   await assert.rejects(installCodexMemory({ root, codexHome, apply: true }));
   assert.equal(await readFile(result.hooksPath, 'utf8'), '{invalid');
   const linked = path.join(temp, 'linked');
-  await symlink(codexHome, linked);
+  await symlink(codexHome, linked, 'junction');
   await assert.rejects(installCodexMemory({ root, codexHome: linked, apply: true }), /symbolic links/);
   console.log('Codex installer: preview, preservation, backup, idempotency, capture choice, malformed config and symlink tests passed.');
 } finally { await rm(temp, { recursive: true, force: true }); }

@@ -84,14 +84,15 @@ semantic truth or cover every specialized tool/client surface. Supported questio
 tools are checked before execution. Other clients receive the same requirement
 through the protocol/MCP instructions and require their own acceptance test.
 
-## Contract details requiring implementation review
+## Contract coverage and remaining processor work
 
 The historical interface is `runCaptureReview(capturePath)` returning `summary`,
 `interpretation`, `questions[]`, `proposals[]`. It is useful prior work, not a
 complete enforced contract for incremental memory today.
 
-The following field groups are a **proposed consolidation for review**, not a
-new implemented schema or an approved breaking API change:
+The following field groups describe the intended boundaries. Retrieval has an
+implemented output schema and the local adapter has configuration, event and
+receipt checks. The complete model-processor contract is not yet implemented:
 
 | Boundary | Information needed |
 | --- | --- |
@@ -100,32 +101,35 @@ new implemented schema or an approved breaking API change:
 | Validation result | Accepted/rejected fields and reasons; source-version conflicts; unsupported references; approval requirement; partial/failure state. |
 | Persistence receipt | Actual files/revisions written; processor/run provenance; completed action versus proposal; next executable step and waiting decision. |
 
-The exact schema, compatibility strategy, consumer adapter and automatic semantic
-publication policy must be reviewed before applying this draft. Maintaining an
-index is not blanket authority to change personal commitments, statuses or plans.
+Further processor-schema changes and automatic semantic publication need their
+own compatibility and acceptance checks. Maintaining an index is not blanket
+authority to change personal commitments, statuses or plans.
 Queue ownership, timeout, retry, budget and interruption recovery belong to the
 consumer runtime; their existence in a plan is not evidence that they run.
 
-## Actual implementation boundary observed in this audit
+## Implementation boundary
 
 - The July Assistant implementation had a Codex-backed review adapter behind a
   provider-neutral interface. Working adapters for every provider were not shown.
 - Assistant commit `136689e` removed the active model-review adapter on 25 August.
   The architecture and review schema survived. Current conversational review
   placeholders do not demonstrate the former processor is running.
-- The new context index/library/CLI and MCP adapter exist in the local Vault
-  working tree. Fixture tests passed in the preceding implementation session.
+- The context index/library/CLI, MCP schema and optional Codex adapter are in
+  source control. Fixture tests and the owner-configured local MCP check passed.
   Discovery and hash freshness are not semantic review of all source contents.
-- The newly added context code has not been committed/pushed or included in the
-  inspected installed desktop package. The inspected live MCP did not expose
-  `vault_context_get`. Source, running service and installed app are separate.
+- The initial audit found an old live server without `vault_context_get`.
+  After reloading the owner-configured service, SDK discovery/read checks verified
+  the new tool and exact context resource. The installed desktop package was not
+  rebuilt; source, running service and installed app remain separate.
 - MCP `instructions` and readable entrypoint delivery require host consumption.
-  A fresh host/model continuation test has not yet demonstrated this full loop.
-- Current `vault_context_get` lacks an output schema; annotation validation does
-  not fully enforce provenance and relationship semantics. This is implementation
-  debt, not a reason to select a different memory store or model provider.
+  The configured local Codex host was observed loading a checkpoint excerpt on
+  compaction, and another existing session invoked prompt retrieval. A fresh
+  chat and other provider clients still need their own acceptance test.
+- `vault_context_get` now advertises an output schema. Annotation field validation
+  rejects malformed types/hashes, but does not prove provenance or relationship
+  semantics. This remaining work does not require a different memory store.
 - The installed SDK advertises protocol support through MCP `2025-11-25`.
-  This draft does not authorize an SDK/protocol upgrade or imply newer behavior.
+  This implementation did not upgrade that SDK/protocol or imply newer behavior.
 
 ## Five proposed acceptance outcomes for the next month
 
